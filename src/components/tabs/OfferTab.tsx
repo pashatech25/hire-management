@@ -11,7 +11,7 @@ import { supabase } from '../../lib/supabase'
 import type { OfferDetails } from '../../types'
 
 export const OfferTab: React.FC = () => {
-  const { offerDetails, setOfferDetails, flatServices, tiers, profile } = useAppStore()
+  const { offerDetails, setOfferDetails, flatServices, setFlatServices, tiers, setTiers, setTieredRates, profile, company } = useAppStore()
   const { user } = useAuth()
   const [isEditing, setIsEditing] = useState(!offerDetails)
   const [isSaving, setIsSaving] = useState(false)
@@ -149,16 +149,19 @@ export const OfferTab: React.FC = () => {
   // Load offer details for the current profile
   useEffect(() => {
     const loadOfferDetails = async () => {
-      if (!profile || profile.id.startsWith('profile_') || !user) return
+      if (!profile || profile.id.startsWith('profile_') || !user) {
+        setOfferDetails(null)
+        return
+      }
 
       try {
         const { data, error } = await supabase
           .from('offer_details')
           .select('*')
           .eq('profile_id', profile.id)
-          .single()
+          .maybeSingle()
 
-        if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        if (error) {
           console.error('Error loading offer details:', error)
           return
         }
@@ -196,6 +199,9 @@ export const OfferTab: React.FC = () => {
             updatedAt: data.updated_at,
           }
           setOfferDetails(frontendOffer)
+        } else {
+          // Clear offer details if no data found for this profile
+          setOfferDetails(null)
         }
       } catch (error) {
         console.error('Error loading offer details:', error)
@@ -204,6 +210,80 @@ export const OfferTab: React.FC = () => {
 
     loadOfferDetails()
   }, [profile, user, setOfferDetails])
+
+  // Load services when company changes
+  useEffect(() => {
+    const loadServices = async () => {
+      if (!company || !user) return
+
+      try {
+        // Load flat services
+        const { data: flatServicesData, error: flatError } = await supabase
+          .from('flat_services')
+          .select('*')
+          .eq('company_id', company.id)
+          .order('created_at', { ascending: true })
+
+        if (flatError) {
+          console.error('Error loading flat services:', flatError)
+        } else {
+          const frontendFlatServices = (flatServicesData || []).map(service => ({
+            id: service.id,
+            profileId: service.profile_id,
+            name: service.name,
+            rate: service.rate,
+            createdAt: service.created_at,
+          }))
+          setFlatServices(frontendFlatServices)
+        }
+
+        // Load tiers
+        const { data: tiersData, error: tiersError } = await supabase
+          .from('tiers')
+          .select('*')
+          .eq('company_id', company.id)
+          .order('created_at', { ascending: true })
+
+        if (tiersError) {
+          console.error('Error loading tiers:', tiersError)
+        } else {
+          const frontendTiers = (tiersData || []).map(tier => ({
+            id: tier.id,
+            profileId: tier.profile_id,
+            minSqft: tier.min_sqft,
+            maxSqft: tier.max_sqft,
+            createdAt: tier.created_at,
+          }))
+          setTiers(frontendTiers)
+        }
+
+        // Load tiered rates
+        const { data: ratesData, error: ratesError } = await supabase
+          .from('tiered_rates')
+          .select('*')
+          .eq('company_id', company.id)
+          .order('created_at', { ascending: true })
+
+        if (ratesError) {
+          console.error('Error loading tiered rates:', ratesError)
+        } else {
+          const frontendRates = (ratesData || []).map(rate => ({
+            id: rate.id,
+            profileId: rate.profile_id,
+            tierId: rate.tier_id,
+            serviceType: rate.service_type as 'photo' | 'video' | 'iguide' | 'matterport',
+            rate: rate.rate,
+            createdAt: rate.created_at,
+          }))
+          setTieredRates(frontendRates)
+        }
+      } catch (error) {
+        console.error('Error loading services:', error)
+      }
+    }
+
+    loadServices()
+  }, [company, user, setFlatServices, setTiers, setTieredRates])
 
   // Save offer details to database
   const saveOfferDetails = async () => {

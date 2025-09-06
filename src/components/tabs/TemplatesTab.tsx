@@ -1,5 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
+import { useAuth } from '../../contexts/AuthContext'
+import { supabase } from '../../lib/supabase'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Textarea } from '../ui/Textarea'
@@ -8,15 +10,63 @@ import { FileText, Plus, Trash2, Edit3, Save, X, Copy } from 'lucide-react'
 import type { Template, DocumentType } from '../../types'
 
 export const TemplatesTab: React.FC = () => {
-  const { templates, setTemplates } = useAppStore()
+  const { templates, setTemplates, profile, company } = useAppStore()
+  const { user } = useAuth()
   const [isCreating, setIsCreating] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [newTemplate, setNewTemplate] = useState<Partial<Template>>({
     documentType: 'waiver',
     clauses: [],
     addendum: '',
   })
   const [newClause, setNewClause] = useState('')
+
+  // Load templates from Supabase when profile changes
+  useEffect(() => {
+    const loadTemplates = async () => {
+      if (!user || !profile || profile.id.startsWith('profile_')) {
+        setTemplates([])
+        return
+      }
+
+      setIsLoading(true)
+      try {
+        console.log('Loading templates for profile:', profile.id)
+        const { data, error } = await supabase
+          .from('templates')
+          .select('*')
+          .eq('profile_id', profile.id)
+          .order('created_at', { ascending: false })
+
+        if (error) {
+          console.error('Error loading templates:', error)
+          return
+        }
+
+        // Convert to frontend format
+        const frontendTemplates: Template[] = (data || []).map(template => ({
+          id: template.id,
+          profileId: template.profile_id,
+          documentType: template.document_type as DocumentType,
+          clauses: template.clauses || [],
+          addendum: template.addendum || '',
+          createdAt: template.created_at,
+          updatedAt: template.updated_at,
+        }))
+
+        console.log('Loaded templates:', frontendTemplates)
+        setTemplates(frontendTemplates)
+      } catch (error) {
+        console.error('Error loading templates:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadTemplates()
+  }, [profile, user, setTemplates])
 
   const documentTypes: { value: DocumentType; label: string; description: string }[] = [
     { value: 'waiver', label: 'Waiver', description: 'Liability waiver and release forms' },
@@ -26,22 +76,59 @@ export const TemplatesTab: React.FC = () => {
     { value: 'offer', label: 'Offer Letter', description: 'Employment offer and acceptance terms' },
   ]
 
-  const handleCreateTemplate = () => {
-    if (!newTemplate.documentType) return
-
-    const template: Template = {
-      id: `template_${Date.now()}`,
-      profileId: 'temp_profile_id', // This would be set from the current profile
-      documentType: newTemplate.documentType,
-      clauses: newTemplate.clauses || [],
-      addendum: newTemplate.addendum || '',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+  const handleCreateTemplate = async () => {
+    if (!newTemplate.documentType || !profile || profile.id.startsWith('profile_')) {
+      alert('Please load a profile first to create templates.')
+      return
     }
 
-    setTemplates([...templates, template])
-    setNewTemplate({ documentType: 'waiver', clauses: [], addendum: '' })
-    setIsCreating(false)
+    if (!user || !company) {
+      alert('Please log in and save company information first.')
+      return
+    }
+
+    setIsSaving(true)
+    try {
+      console.log('Creating template for profile:', profile.id, 'company:', company.id)
+      const { data, error } = await supabase
+        .from('templates')
+        .insert([{
+          profile_id: profile.id,
+          company_id: company.id,
+          document_type: newTemplate.documentType,
+          clauses: newTemplate.clauses || [],
+          addendum: newTemplate.addendum || '',
+        }])
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error creating template:', error)
+        alert('Error creating template. Please try again.')
+        return
+      }
+
+      // Convert to frontend format and add to local state
+      const frontendTemplate: Template = {
+        id: data.id,
+        profileId: data.profile_id,
+        documentType: data.document_type as DocumentType,
+        clauses: data.clauses || [],
+        addendum: data.addendum || '',
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      }
+
+      setTemplates([frontendTemplate, ...templates])
+      setNewTemplate({ documentType: 'waiver', clauses: [], addendum: '' })
+      setIsCreating(false)
+      console.log('Template created successfully:', frontendTemplate)
+    } catch (error) {
+      console.error('Error creating template:', error)
+      alert('Error creating template. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleEditTemplate = (template: Template) => {
@@ -49,26 +136,83 @@ export const TemplatesTab: React.FC = () => {
     setNewTemplate(template)
   }
 
-  const handleUpdateTemplate = () => {
-    if (!editingId) return
+  const handleUpdateTemplate = async () => {
+    if (!editingId || !user) return
 
-    const updatedTemplates = templates.map(template =>
-      template.id === editingId
-        ? {
-            ...template,
-            ...newTemplate,
-            updatedAt: new Date().toISOString(),
-          }
-        : template
-    )
+    setIsSaving(true)
+    try {
+      console.log('Updating template:', editingId)
+      const { data, error } = await supabase
+        .from('templates')
+        .update({
+          document_type: newTemplate.documentType,
+          clauses: newTemplate.clauses || [],
+          addendum: newTemplate.addendum || '',
+        })
+        .eq('id', editingId)
+        .select()
+        .single()
 
-    setTemplates(updatedTemplates)
-    setEditingId(null)
-    setNewTemplate({ documentType: 'waiver', clauses: [], addendum: '' })
+      if (error) {
+        console.error('Error updating template:', error)
+        alert('Error updating template. Please try again.')
+        return
+      }
+
+      // Convert to frontend format and update local state
+      const frontendTemplate: Template = {
+        id: data.id,
+        profileId: data.profile_id,
+        documentType: data.document_type as DocumentType,
+        clauses: data.clauses || [],
+        addendum: data.addendum || '',
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      }
+
+      const updatedTemplates = templates.map(template =>
+        template.id === editingId ? frontendTemplate : template
+      )
+
+      setTemplates(updatedTemplates)
+      setEditingId(null)
+      setNewTemplate({ documentType: 'waiver', clauses: [], addendum: '' })
+      console.log('Template updated successfully:', frontendTemplate)
+    } catch (error) {
+      console.error('Error updating template:', error)
+      alert('Error updating template. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const handleDeleteTemplate = (id: string) => {
-    setTemplates(templates.filter(template => template.id !== id))
+  const handleDeleteTemplate = async (id: string) => {
+    if (!user) return
+
+    if (!confirm('Are you sure you want to delete this template?')) return
+
+    setIsSaving(true)
+    try {
+      console.log('Deleting template:', id)
+      const { error } = await supabase
+        .from('templates')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        console.error('Error deleting template:', error)
+        alert('Error deleting template. Please try again.')
+        return
+      }
+
+      setTemplates(templates.filter(template => template.id !== id))
+      console.log('Template deleted successfully')
+    } catch (error) {
+      console.error('Error deleting template:', error)
+      alert('Error deleting template. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleAddClause = () => {
@@ -88,14 +232,52 @@ export const TemplatesTab: React.FC = () => {
     }))
   }
 
-  const handleDuplicateTemplate = (template: Template) => {
-    const duplicatedTemplate: Template = {
-      ...template,
-      id: `template_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+  const handleDuplicateTemplate = async (template: Template) => {
+    if (!user || !profile || profile.id.startsWith('profile_') || !company) {
+      alert('Please load a profile and ensure company information is saved first.')
+      return
     }
-    setTemplates([...templates, duplicatedTemplate])
+
+    setIsSaving(true)
+    try {
+      console.log('Duplicating template:', template.id, 'for company:', company.id)
+      const { data, error } = await supabase
+        .from('templates')
+        .insert([{
+          profile_id: profile.id,
+          company_id: company.id,
+          document_type: template.documentType,
+          clauses: template.clauses,
+          addendum: template.addendum,
+        }])
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error duplicating template:', error)
+        alert('Error duplicating template. Please try again.')
+        return
+      }
+
+      // Convert to frontend format and add to local state
+      const frontendTemplate: Template = {
+        id: data.id,
+        profileId: data.profile_id,
+        documentType: data.document_type as DocumentType,
+        clauses: data.clauses || [],
+        addendum: data.addendum || '',
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      }
+
+      setTemplates([frontendTemplate, ...templates])
+      console.log('Template duplicated successfully:', frontendTemplate)
+    } catch (error) {
+      console.error('Error duplicating template:', error)
+      alert('Error duplicating template. Please try again.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const getDocumentTypeInfo = (type: DocumentType) => {
@@ -118,12 +300,16 @@ export const TemplatesTab: React.FC = () => {
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Document Templates</h2>
             <p className="text-gray-600 text-sm">
-              Create and manage customizable clauses for different document types
+              {profile && !profile.id.startsWith('profile_') 
+                ? `Create and manage customizable clauses for ${profile.hireeName}'s documents`
+                : 'Load a profile to create and manage customizable document templates'
+              }
             </p>
           </div>
           <Button
             onClick={() => setIsCreating(true)}
-            className="bg-primary-600 hover:bg-primary-700"
+            disabled={!profile || profile.id.startsWith('profile_') || isLoading}
+            className="bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400"
           >
             <Plus className="h-4 w-4 mr-2" />
             New Template
@@ -224,10 +410,11 @@ export const TemplatesTab: React.FC = () => {
               </Button>
               <Button
                 onClick={isCreating ? handleCreateTemplate : handleUpdateTemplate}
-                className="bg-primary-600 hover:bg-primary-700"
+                disabled={isSaving}
+                className="bg-primary-600 hover:bg-primary-700 disabled:bg-gray-400"
               >
                 <Save className="h-4 w-4 mr-2" />
-                {isCreating ? 'Create Template' : 'Update Template'}
+                {isSaving ? 'Saving...' : (isCreating ? 'Create Template' : 'Update Template')}
               </Button>
             </div>
           </div>
@@ -239,14 +426,23 @@ export const TemplatesTab: React.FC = () => {
         <CardContent>
           <div className="text-center py-12">
             <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Templates Created</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              {isLoading ? 'Loading Templates...' : 'No Templates Created'}
+            </h3>
             <p className="text-gray-600 mb-6">
-              Create your first template to get started with customizable document clauses.
+              {isLoading 
+                ? 'Please wait while we load the templates...'
+                : profile && !profile.id.startsWith('profile_')
+                  ? `Create your first template for ${profile.hireeName}'s documents.`
+                  : 'Load a profile to create and manage document templates.'
+              }
             </p>
-            <Button onClick={() => setIsCreating(true)} className="bg-primary-600 hover:bg-primary-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Create Your First Template
-            </Button>
+            {!isLoading && profile && !profile.id.startsWith('profile_') && (
+              <Button onClick={() => setIsCreating(true)} className="bg-primary-600 hover:bg-primary-700">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Your First Template
+              </Button>
+            )}
           </div>
         </CardContent>
       ) : (
@@ -346,20 +542,20 @@ export const TemplatesTab: React.FC = () => {
         <CardHeader>
           <h3 className="text-lg font-medium text-gray-900">Data Storage</h3>
         </CardHeader>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
           <div className="flex items-start space-x-3">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
             </div>
             <div className="text-sm">
-              <h4 className="font-medium text-blue-900 mb-1">Template Data Storage</h4>
-              <p className="text-blue-700">
-                <strong>Currently:</strong> All template data is stored in browser memory and will be lost on refresh.
+              <h4 className="font-medium text-green-900 mb-1">Template Data Storage</h4>
+              <p className="text-green-700">
+                <strong>✅ Database Integration:</strong> All templates are now saved to Supabase database and persist across sessions.
               </p>
-              <p className="text-blue-700 mt-2">
-                <strong>Persistence:</strong> Set up Supabase database to automatically save templates when created or updated.
+              <p className="text-green-700 mt-2">
+                <strong>Profile-Specific:</strong> Templates are linked to the currently loaded profile and will only show for that specific hiree.
               </p>
             </div>
           </div>

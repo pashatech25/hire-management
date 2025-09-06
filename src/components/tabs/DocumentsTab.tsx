@@ -13,12 +13,13 @@ export const DocumentsTab: React.FC = () => {
   const { 
     profile, 
     company, 
-    flatServices, 
+    flatServices,
     tiers, 
     setTiers,
     tieredRates, 
     setTieredRates,
     offerDetails, 
+    setOfferDetails,
     templates, 
     signatures 
   } = useAppStore()
@@ -26,17 +27,15 @@ export const DocumentsTab: React.FC = () => {
   // const [isGenerating, setIsGenerating] = useState<string | null>(null)
   const [previewDoc, setPreviewDoc] = useState<DocumentType | null>(null)
   const [previewContent, setPreviewContent] = useState<string>('')
-  const [flatServiceOverrides, setFlatServiceOverrides] = useState<Record<string, { rate: number; enabled: boolean }>>({})
-  const [tieredRateOverrides, setTieredRateOverrides] = useState<Record<string, { rate: number; enabled: boolean }>>({})
   const [profileGearItems, setProfileGearItems] = useState<Array<{ id: string; name: string; isCustom: boolean; isRequired: boolean; customNotes: string }>>([])
   const [isLoadingData, setIsLoadingData] = useState(false)
+  const [flatServiceOverrides, setFlatServiceOverrides] = useState<Record<string, { rate: number; enabled: boolean }>>({})
+  const [tieredRateOverrides, setTieredRateOverrides] = useState<Record<string, { rate: number; enabled: boolean }>>({})
 
   // Load company services and hiree overrides when profile or company changes
   useEffect(() => {
     const loadData = async () => {
       if (!user || !company) {
-        setFlatServiceOverrides({})
-        setTieredRateOverrides({})
         setProfileGearItems([])
         return
       }
@@ -93,6 +92,7 @@ export const DocumentsTab: React.FC = () => {
         // Load hiree overrides and gear items if profile is loaded
         if (profile && !profile.id.startsWith('profile_')) {
           console.log('Loading data for profile:', profile.id, profile.hireeName)
+
           // Load flat service overrides
           const { data: flatOverrides, error: flatError } = await supabase
             .from('hiree_flat_services')
@@ -220,8 +220,6 @@ export const DocumentsTab: React.FC = () => {
             }
           }
         } else {
-          setFlatServiceOverrides({})
-          setTieredRateOverrides({})
           setProfileGearItems([])
         }
       } catch (error) {
@@ -234,6 +232,72 @@ export const DocumentsTab: React.FC = () => {
 
     loadData()
   }, [profile, company, user])
+
+  // Load offer details when profile changes
+  useEffect(() => {
+    const loadOfferDetails = async () => {
+      if (!profile || !user || profile.id.startsWith('profile_')) {
+        setOfferDetails(null)
+        return
+      }
+
+      try {
+        console.log('Loading offer details for profile:', profile.id)
+        const { data, error } = await supabase
+          .from('offer_details')
+          .select('*')
+          .eq('profile_id', profile.id)
+          .maybeSingle()
+
+        if (error) {
+          console.error('Error loading offer details:', error)
+          setOfferDetails(null)
+          return
+        }
+
+        console.log('Offer details loaded:', data ? 'Found data' : 'No data found')
+
+        if (data) {
+          // Convert database format to frontend format
+          const frontendOffer = {
+            id: data.id,
+            profileId: data.profile_id,
+            position: data.position || '',
+            startDate: data.start_date || null,
+            endDate: data.end_date || '',
+            workSchedule: data.work_schedule || '',
+            probationMonths: data.probation_months || '',
+            managerName: data.manager_name || '',
+            managerEmail: data.manager_email || '',
+            managerPhone: data.manager_phone || '',
+            managerExt: data.manager_ext || '',
+            contactExt: data.contact_ext || '',
+            returnBy: data.return_by || null,
+            ceoName: data.ceo_name || '',
+            compensation: {
+              baseSalary: data.base_salary || 0,
+              hourlyRate: data.hourly_rate || 0,
+              commission: data.commission || 0,
+              benefits: data.benefits || '',
+            },
+            responsibilities: data.responsibilities || '',
+            requirements: data.requirements || '',
+            terms: data.terms || '',
+            flatServices: data.flat_services || [],
+            tieredServices: data.tiered_services || [],
+            status: data.status || 'draft' as const,
+            createdAt: data.created_at,
+            updatedAt: data.updated_at,
+          }
+          setOfferDetails(frontendOffer)
+        }
+      } catch (error) {
+        console.error('Error loading offer details:', error)
+      }
+    }
+
+    loadOfferDetails()
+  }, [profile, user, setOfferDetails])
 
   // Generate document ID
   const generateDocId = () => 'SGM-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2,7).toUpperCase()
@@ -250,6 +314,9 @@ export const DocumentsTab: React.FC = () => {
     return `${yy}-${mm}-${dd}`
   }
 
+
+
+
   // Get hiree-specific pricing for flat services
   const getHireeFlatServicePrice = (serviceId: string): number => {
     // Check if there's an override for this service
@@ -259,14 +326,14 @@ export const DocumentsTab: React.FC = () => {
     }
     
     // Fall back to company rate
-    const service = flatServices.find(s => s.id === serviceId)
+    const service = flatServices?.find(s => s.id === serviceId)
     return typeof service?.rate === 'string' ? parseFloat(service.rate) || 0 : service?.rate || 0
   }
 
   // Get hiree-specific pricing for tiered services
   const getHireeTieredServicePrice = (tierId: string, serviceType: string): number => {
     // Find the tiered rate ID for this tier and service type
-    const tieredRate = tieredRates.find(r => r.tierId === tierId && r.serviceType === serviceType)
+    const tieredRate = tieredRates?.find(r => r.tierId === tierId && r.serviceType === serviceType)
     if (!tieredRate) return 0
     
     // Check if there's an override for this tiered rate
@@ -369,61 +436,6 @@ export const DocumentsTab: React.FC = () => {
       `
     }
 
-    // Payment tier tables
-    const payTierTables = () => {
-      if (!tiers || tiers.length === 0) return '<p style="color:#6b7280">No tiered services configured.</p>'
-      
-      return `
-        <div style="margin:12px 0">
-          <h4 style="margin:8px 0;font-size:14px;color:#0f172a">Tiered Services (Per Square Foot)</h4>
-          <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;margin:8px 0">
-            <thead>
-              <tr style="background:#f8fafc">
-                <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Tier</th>
-                <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Range</th>
-                <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Photo</th>
-                <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Video</th>
-                <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">iGuide</th>
-                <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Matterport</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tiers.map(tier => `
-                <tr>
-                  <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Tier ${tier.minSqft}-${tier.maxSqft}</td>
-                  <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${tier.minSqft} - ${tier.maxSqft} sq ft</td>
-                  <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeTieredServicePrice(tier.id, 'photo'))}</td>
-                  <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeTieredServicePrice(tier.id, 'video'))}</td>
-                  <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeTieredServicePrice(tier.id, 'iguide'))}</td>
-                  <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeTieredServicePrice(tier.id, 'matterport'))}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-        ${flatServices && flatServices.length > 0 ? `
-          <div style="margin:12px 0">
-            <h4 style="margin:8px 0;font-size:14px;color:#0f172a">Flat Rate Services</h4>
-            <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;margin:8px 0">
-              <thead>
-                <tr style="background:#f8fafc">
-                  <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Service</th>
-                  <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${flatServices.map(service => `
-                  <tr>
-                    <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${escapeHtml(service.name)}</td>
-                    <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeFlatServicePrice(service.id))}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        ` : ''}
-      `
-    }
 
     // Build specific documents
     switch (docType) {
@@ -490,20 +502,155 @@ export const DocumentsTab: React.FC = () => {
         `
 
       case 'pay':
+        if (!offerDetails) {
+          return `
+            <div style="text-align:center;padding:60px 20px;color:#6b7280">
+              <h3 style="font-size:18px;color:#374151;margin-bottom:8px">No Offer Details Found</h3>
+              <p style="margin-bottom:20px">This profile doesn't have offer/acceptance details yet.</p>
+              <p style="color:#9ca3af;font-size:14px">Please go to the Offer/Acceptance tab to create an offer letter for this hiree.</p>
+            </div>
+          `
+        }
+
         const effFromISO = offerDetails?.startDate || ""
-        const effUntilISO = (offerDetails?.startDate && offerDetails?.probationMonths)
-          ? addMonths(offerDetails.startDate, parseInt(offerDetails.probationMonths))
+        const effUntilISO = offerDetails?.endDate || (offerDetails?.startDate && offerDetails?.probationMonths)
+          ? addMonths(offerDetails.startDate!, parseInt(offerDetails.probationMonths!))
           : ""
         const effFrom = effFromISO ? formatLongDate(effFromISO) : "________________"
         const effUntil = effUntilISO ? formatLongDate(effUntilISO) : "________________"
+
+        // Build compensation details from offer form
+        const compensationDetails = () => {
+          const comp = offerDetails?.compensation
+          if (!comp) return ''
+          
+          let details = '<div style="margin:12px 0;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0">'
+          details += '<div style="font-weight:600;color:#0f172a;margin-bottom:8px">Compensation Details</div>'
+          details += '<div style="color:#475569;font-size:14px">'
+          
+          if (comp.baseSalary && comp.baseSalary > 0) {
+            details += `<div><strong>Base Salary:</strong> ${formatCurrency(comp.baseSalary)}</div>`
+          }
+          if (comp.hourlyRate && comp.hourlyRate > 0) {
+            details += `<div><strong>Hourly Rate:</strong> ${formatCurrency(comp.hourlyRate)}/hour</div>`
+          }
+          if (comp.commission && comp.commission > 0) {
+            details += `<div><strong>Commission:</strong> ${comp.commission}%</div>`
+          }
+          if (comp.benefits) {
+            details += `<div><strong>Benefits & Perks:</strong> ${escapeHtml(comp.benefits)}</div>`
+          }
+          
+          details += '</div></div>'
+          return details
+        }
+
+        // Build tiered services table (only show selected services from offer form)
+        const payTierTables = () => {
+          const selectedFlatServices = offerDetails?.flatServices || []
+          const selectedTieredServices = offerDetails?.tieredServices || []
+          
+          if (selectedFlatServices.length === 0 && selectedTieredServices.length === 0) {
+            return '<p style="color:#6b7280;font-style:italic">No services selected in offer form.</p>'
+          }
+          
+          let content = ''
+          
+          // Show selected tiered services with full tier details (only if tiered services were selected)
+          if (selectedTieredServices.length > 0 && tiers && tiers.length > 0) {
+            // Determine which service types were selected
+            const selectedServiceTypes = new Set<string>()
+            selectedTieredServices.forEach(service => {
+              if (service.name.toLowerCase().includes('photo')) selectedServiceTypes.add('photo')
+              if (service.name.toLowerCase().includes('video')) selectedServiceTypes.add('video')
+              if (service.name.toLowerCase().includes('iguide')) selectedServiceTypes.add('iguide')
+              if (service.name.toLowerCase().includes('matterport')) selectedServiceTypes.add('matterport')
+            })
+
+            // Only show the table if at least one service type was selected
+            if (selectedServiceTypes.size > 0) {
+              content += `
+                <div style="margin:12px 0">
+                  <h4 style="margin:8px 0;font-size:14px;color:#0f172a">Selected Tiered Services (Per Square Foot)</h4>
+                  <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;margin:8px 0">
+                    <thead>
+                      <tr style="background:#f8fafc">
+                        <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Tier</th>
+                        <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Range</th>
+                        ${selectedServiceTypes.has('photo') ? '<th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Photo</th>' : ''}
+                        ${selectedServiceTypes.has('video') ? '<th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Video</th>' : ''}
+                        ${selectedServiceTypes.has('iguide') ? '<th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">iGuide</th>' : ''}
+                        ${selectedServiceTypes.has('matterport') ? '<th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Matterport</th>' : ''}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${tiers.map(tier => `
+                        <tr>
+                          <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Tier ${tier.minSqft}-${tier.maxSqft}</td>
+                          <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${tier.minSqft} - ${tier.maxSqft} sq ft</td>
+                          ${selectedServiceTypes.has('photo') ? `<td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeTieredServicePrice(tier.id, 'photo'))}</td>` : ''}
+                          ${selectedServiceTypes.has('video') ? `<td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeTieredServicePrice(tier.id, 'video'))}</td>` : ''}
+                          ${selectedServiceTypes.has('iguide') ? `<td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeTieredServicePrice(tier.id, 'iguide'))}</td>` : ''}
+                          ${selectedServiceTypes.has('matterport') ? `<td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(getHireeTieredServicePrice(tier.id, 'matterport'))}</td>` : ''}
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              `
+            }
+          }
+          
+          // Show selected flat services (only if flat services were selected)
+          if (selectedFlatServices.length > 0) {
+            content += `
+              <div style="margin:12px 0">
+                <h4 style="margin:8px 0;font-size:14px;color:#0f172a">Selected Flat Rate Services</h4>
+                <table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;margin:8px 0">
+                  <thead>
+                    <tr style="background:#f8fafc">
+                      <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Service</th>
+                      <th style="padding:8px;text-align:left;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${selectedFlatServices.map(service => {
+                      // Find the actual service in company services to get proper pricing
+                      const companyService = flatServices?.find(s => s.name === service.name)
+                      const serviceId = companyService?.id || service.id
+                      const price = companyService ? getHireeFlatServicePrice(serviceId) : service.rate
+                      return `
+                        <tr>
+                          <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${escapeHtml(service.name)}</td>
+                          <td style="padding:8px;border-bottom:1px solid #e2e8f0;font-size:12px;color:#374151">${formatCurrency(price)}</td>
+                        </tr>
+                      `
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+            `
+          }
+          
+          return content
+        }
 
         return `
           ${logoBlock()}
           ${topTitle("Compensation Agreement")}
           ${hireeBlock()}
-          <h3 style="margin:12px 0 8px;font-size:16px;color:#0f172a">1) Tiered & Flat Services</h3>
+          <h3 style="margin:12px 0 8px;font-size:16px;color:#0f172a">1) Position & Dates</h3>
+          <div style="margin:12px 0;padding:12px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0">
+            <div style="color:#475569;font-size:14px">
+              <div><strong>Position:</strong> ${escapeHtml(offerDetails?.position || "________________")}</div>
+              <div><strong>Start Date:</strong> ${effFrom}</div>
+              ${effUntil ? `<div><strong>End Date:</strong> ${effUntil}</div>` : ''}
+            </div>
+          </div>
+          ${compensationDetails()}
+          <h3 style="margin:12px 0 8px;font-size:16px;color:#0f172a">2) Tiered & Flat Services</h3>
           ${payTierTables()}
-          <h3 style="margin:16px 0 8px;font-size:16px;color:#0f172a">2) Payment & Terms</h3>
+          <h3 style="margin:16px 0 8px;font-size:16px;color:#0f172a">3) Payment & Terms</h3>
           <ol style="color:#1f2937;padding-left:18px;margin:6px 0">
             <li><strong>Effective Period:</strong> From <u>${effFrom}</u> until <u>${effUntil}</u> (probation window).</li>
             <li>Compensation is payable every two (2) weeks; statutory deductions may apply.</li>
@@ -519,14 +666,35 @@ export const DocumentsTab: React.FC = () => {
         `
 
       case 'offer':
+        if (!offerDetails) {
+          return `
+            <div style="text-align:center;padding:60px 20px;color:#6b7280">
+              <h3 style="font-size:18px;color:#374151;margin-bottom:8px">No Offer Details Found</h3>
+              <p style="margin-bottom:20px">This profile doesn't have offer/acceptance details yet.</p>
+              <p style="color:#9ca3af;font-size:14px">Please go to the Offer/Acceptance tab to create an offer letter for this hiree.</p>
+            </div>
+          `
+        }
+
         const o = offerDetails
+        const hireeName = profile?.hireeName || "________________"
+        const workSchedule = o?.workSchedule || "________________"
+        const probationPeriod = o?.probationMonths || "1"
+        const benefits = o?.compensation?.benefits || ""
+        const reportToName = o?.managerName || "________"
+        const reportToEmail = o?.managerEmail || "________"
+        const reportToPhone = o?.managerPhone || "________"
+        const reportToExt = o?.managerExt || "300"
+
         return `
           ${logoBlock()}
           ${topTitle(`Offer of Co-Working — ${escapeHtml(o?.position || "Photographer")}`)}
           <p style="color:#475569;margin:0 0 6px">Date: ${formatLongDate(new Date().toISOString().split('T')[0])}</p>
-          <p style="color:#1f2937">Dear _____________________,</p>
-          <p style="color:#1f2937">I am very pleased to offer you the position of ${escapeHtml(o?.position || "Photographer")} with ${c}. This position has a start date of ${o?.startDate ? formatLongDate(o.startDate) : "________________"} and includes a probationary period of ${escapeHtml(o?.probationMonths || "1")} month(s), after which your performance will be reviewed.</p>
-          <p style="color:#1f2937">You will report to <strong>${escapeHtml(o?.managerName || "________")}</strong> (${escapeHtml(o?.managerEmail || "________")} • ${escapeHtml(o?.managerPhone || "(647) 931-0909")} Ext ${escapeHtml(o?.managerExt || "300")}).</p>
+          <p style="color:#1f2937">Dear ${escapeHtml(hireeName)},</p>
+          <p style="color:#1f2937">I am very pleased to offer you the position of ${escapeHtml(o?.position || "Photographer")} with ${c}. This position has a start date of ${o?.startDate ? formatLongDate(o.startDate) : "________________"} and includes a probationary period of ${escapeHtml(probationPeriod)} month(s), after which your performance will be reviewed.</p>
+          <p style="color:#1f2937">Your work schedule will be: <strong>${escapeHtml(workSchedule)}</strong></p>
+          <p style="color:#1f2937">You will report to <strong>${escapeHtml(reportToName)}</strong> (${escapeHtml(reportToEmail)} • ${escapeHtml(reportToPhone)} Ext ${escapeHtml(reportToExt)}).</p>
+          ${benefits ? `<p style="color:#1f2937"><strong>Benefits & Perks:</strong> ${escapeHtml(benefits)}</p>` : ''}
           <p style="color:#1f2937">Please indicate your acceptance by signing below and returning this letter by ${o?.returnBy ? formatLongDate(o.returnBy) : "________________"}. For general questions, contact (647) 931-0909 Ext ${escapeHtml(o?.contactExt || "500")}.</p>
           ${addendumBlock(templates.find(t => t.documentType === 'offer')?.addendum || '')}
           <div style="margin-top:18px;font-weight:600">${escapeHtml(o?.ceoName || "Alipasha Amidi (CEO)")}</div>
