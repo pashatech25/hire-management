@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNotification } from '../../contexts/NotificationContext'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { CardContent, CardHeader } from '../ui/Card'
-import { Camera, Plus, Trash2, CheckCircle } from 'lucide-react'
+import { Camera, Plus, Trash2, CheckCircle, DollarSign, Loader2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { OpenAIService } from '../../lib/openaiService'
 import type { GearItem } from '../../types'
 
 export const GearTab: React.FC = () => {
   const { gearItems, setGearItems, company, profile } = useAppStore()
   const { user } = useAuth()
+  const { showSuccess, showError, showWarning, showInfo } = useNotification()
   const [newGearItem, setNewGearItem] = useState('')
+  const [isEstimating, setIsEstimating] = useState(false)
   
   // State for hiree overrides
   const [gearOverrides, setGearOverrides] = useState<Record<string, { required: boolean; customNotes: string }>>({})
@@ -54,7 +58,7 @@ export const GearTab: React.FC = () => {
       if (!user || !company) return
 
       try {
-        // Load company gear items
+        // Load company gear items with pricing
         const { data: companyGear, error: companyError } = await supabase
           .from('gear_items')
           .select('*')
@@ -71,7 +75,10 @@ export const GearTab: React.FC = () => {
           profileId: dbItem.profile_id,
           name: dbItem.name,
           createdAt: dbItem.created_at,
-          isCustom: false
+          isCustom: false,
+          estimatedPriceCAD: dbItem.estimated_price_cad || undefined,
+          priceSource: dbItem.price_source || undefined,
+          lastEstimatedAt: dbItem.last_estimated_at || undefined
         }))
 
         // If a profile is loaded, also load custom gear items for that profile
@@ -93,7 +100,10 @@ export const GearTab: React.FC = () => {
               createdAt: dbItem.created_at,
               isRequired: dbItem.is_required,
               customNotes: dbItem.custom_notes || '',
-              isCustom: true
+              isCustom: true,
+              estimatedPriceCAD: dbItem.estimated_price_cad || undefined,
+              priceSource: dbItem.price_source || undefined,
+              lastEstimatedAt: dbItem.last_estimated_at || undefined
             }))
           }
         }
@@ -353,7 +363,208 @@ export const GearTab: React.FC = () => {
       setGearItems(gearItems.filter(item => item.id !== id))
     } catch (error) {
       console.error('Error deleting gear item:', error)
-      alert('Error deleting gear item. Please try again.')
+      showError('Delete Failed', 'Error deleting gear item. Please try again.')
+    }
+  }
+
+  const handleAutoEstimatePrices = async () => {
+    if (!profile || profile.id.startsWith('profile_')) {
+      showWarning('Profile Required', 'Please load a profile first to estimate gear prices.')
+      return
+    }
+
+    if (!company) {
+      showWarning('Company Required', 'Please save company information first.')
+      return
+    }
+
+    if (gearItems.length === 0) {
+      showInfo('No Gear Items', 'Add some gear items first before estimating prices.')
+      return
+    }
+
+    setIsEstimating(true)
+    try {
+      // Separate company gear and custom gear
+      const companyGear = gearItems.filter(item => !item.isCustom)
+      const customGear = gearItems.filter(item => item.isCustom)
+
+      let totalEstimated = 0
+      let totalItems = 0
+      let companyResult: { 
+        items: Array<{ name: string; estimatedPriceCAD: number }>; 
+        totalEstimatedCostCAD: number; 
+        tokensUsed: number; 
+        costUSD: number; 
+      } | null = null
+      let customResult: { 
+        items: Array<{ name: string; estimatedPriceCAD: number }>; 
+        totalEstimatedCostCAD: number; 
+        tokensUsed: number; 
+        costUSD: number; 
+      } | null = null
+
+      // Estimate company gear
+      if (companyGear.length > 0) {
+        const companyGearToEstimate = companyGear.map(item => ({
+          id: item.id,
+          name: item.name,
+          isCustom: false,
+          isRequired: true,
+          customNotes: ''
+        }))
+
+        companyResult = await OpenAIService.estimateGearCosts({
+          gearItems: companyGearToEstimate,
+          profileId: profile.id,
+          companyId: company.id,
+          estimationType: 'company_gear'
+        })
+
+        // Update company gear items with estimated prices
+        const updatedCompanyGear = companyGear.map(item => {
+          const estimation = companyResult?.items.find((est: { name: string; estimatedPriceCAD: number }) => est.name.toLowerCase() === item.name.toLowerCase())
+          return {
+            ...item,
+            estimatedPriceCAD: estimation?.estimatedPriceCAD || 0,
+            priceSource: 'openai' as const,
+            lastEstimatedAt: new Date().toISOString()
+          }
+        })
+
+        // Save company gear to database
+        for (const item of updatedCompanyGear) {
+          const { error } = await supabase
+            .from('gear_items')
+            .update({
+              estimated_price_cad: item.estimatedPriceCAD,
+              price_source: item.priceSource,
+              last_estimated_at: item.lastEstimatedAt
+            })
+            .eq('id', item.id)
+
+          if (error) {
+            console.error('Error updating gear item price:', error)
+          }
+        }
+
+        totalEstimated += companyResult.totalEstimatedCostCAD
+        totalItems += companyResult.items.length
+
+        // Log the estimation
+        await OpenAIService.logEstimation(
+          profile.id,
+          company.id,
+          'company_gear',
+          companyResult.items.length,
+          companyResult.totalEstimatedCostCAD,
+          companyResult.tokensUsed,
+          companyResult.costUSD
+        )
+      }
+
+      // Estimate custom gear
+      if (customGear.length > 0) {
+        const customGearToEstimate = customGear.map(item => ({
+          id: item.id,
+          name: item.name,
+          isCustom: true,
+          isRequired: item.isRequired || true,
+          customNotes: item.customNotes || ''
+        }))
+
+        customResult = await OpenAIService.estimateGearCosts({
+          gearItems: customGearToEstimate,
+          profileId: profile.id,
+          companyId: company.id,
+          estimationType: 'hiree_custom_gear'
+        })
+
+        // Update custom gear items with estimated prices
+        const updatedCustomGear = customGear.map(item => {
+          const estimation = customResult?.items.find((est: { name: string; estimatedPriceCAD: number }) => est.name.toLowerCase() === item.name.toLowerCase())
+          return {
+            ...item,
+            estimatedPriceCAD: estimation?.estimatedPriceCAD || 0,
+            priceSource: 'openai' as const,
+            lastEstimatedAt: new Date().toISOString()
+          }
+        })
+
+        // Save custom gear to database
+        for (const item of updatedCustomGear) {
+          const { error } = await supabase
+            .from('hiree_custom_gear_items')
+            .update({
+              estimated_price_cad: item.estimatedPriceCAD,
+              price_source: item.priceSource,
+              last_estimated_at: item.lastEstimatedAt
+            })
+            .eq('id', item.id)
+
+          if (error) {
+            console.error('Error updating custom gear item price:', error)
+          }
+        }
+
+        totalEstimated += customResult.totalEstimatedCostCAD
+        totalItems += customResult.items.length
+
+        // Log the estimation
+        await OpenAIService.logEstimation(
+          profile.id,
+          company.id,
+          'hiree_custom_gear',
+          customResult.items.length,
+          customResult.totalEstimatedCostCAD,
+          customResult.tokensUsed,
+          customResult.costUSD
+        )
+      }
+
+      // Update local state with all updated items
+      let allUpdatedItems: GearItem[] = []
+
+      // Add updated company gear
+      if (companyGear.length > 0) {
+        const updatedCompanyGear = companyGear.map(item => {
+          const estimation = companyResult?.items.find((est: { name: string; estimatedPriceCAD: number }) => est.name.toLowerCase() === item.name.toLowerCase())
+          return {
+            ...item,
+            estimatedPriceCAD: estimation?.estimatedPriceCAD || 0,
+            priceSource: 'openai' as const,
+            lastEstimatedAt: new Date().toISOString()
+          }
+        })
+        allUpdatedItems = [...allUpdatedItems, ...updatedCompanyGear]
+      }
+
+      // Add updated custom gear
+      if (customGear.length > 0) {
+        const updatedCustomGear = customGear.map(item => {
+          const estimation = customResult?.items.find((est: { name: string; estimatedPriceCAD: number }) => est.name.toLowerCase() === item.name.toLowerCase())
+          return {
+            ...item,
+            estimatedPriceCAD: estimation?.estimatedPriceCAD || 0,
+            priceSource: 'openai' as const,
+            lastEstimatedAt: new Date().toISOString()
+          }
+        })
+        allUpdatedItems = [...allUpdatedItems, ...updatedCustomGear]
+      }
+
+      setGearItems(allUpdatedItems)
+
+      showSuccess(
+        'Prices Estimated', 
+        `Successfully estimated prices for ${totalItems} gear items. Total estimated cost: $${totalEstimated.toFixed(2)} CAD`
+      )
+
+    } catch (error) {
+      console.error('Error estimating gear prices:', error)
+      showError('Estimation Failed', `Failed to estimate gear prices: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsEstimating(false)
     }
   }
 
@@ -387,6 +598,22 @@ export const GearTab: React.FC = () => {
             <Plus className="h-4 w-4 mr-1" />
             Add Gear
           </Button>
+          {gearItems.length > 0 && (
+            <Button 
+              onClick={handleAutoEstimatePrices} 
+              size="sm" 
+              variant="outline"
+              loading={isEstimating}
+              disabled={isEstimating}
+            >
+              {isEstimating ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <DollarSign className="h-4 w-4 mr-1" />
+              )}
+              Auto Estimate Price
+            </Button>
+          )}
         </div>
 
         {/* Gear Items Table */}
@@ -395,6 +622,7 @@ export const GearTab: React.FC = () => {
             <thead>
               <tr>
                 <th>Item</th>
+                <th>Estimated Price (CAD)</th>
                 {profile && !profile.id.startsWith('profile_') && (
                   <>
                     <th>Required</th>
@@ -407,7 +635,7 @@ export const GearTab: React.FC = () => {
             <tbody>
               {gearItems.length === 0 ? (
                 <tr>
-                  <td colSpan={profile && !profile.id.startsWith('profile_') ? 4 : 2} className="text-center py-8 text-gray-500">
+                  <td colSpan={profile && !profile.id.startsWith('profile_') ? 5 : 3} className="text-center py-8 text-gray-500">
                     No gear items added yet
                   </td>
                 </tr>
@@ -425,6 +653,18 @@ export const GearTab: React.FC = () => {
                         {item.isCustom && (
                           <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
                             Custom
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {item.estimatedPriceCAD ? `$${item.estimatedPriceCAD.toFixed(2)}` : 'Not estimated'}
+                        </span>
+                        {item.priceSource === 'openai' && (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                            AI
                           </span>
                         )}
                       </div>

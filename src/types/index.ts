@@ -334,6 +334,9 @@ export interface GearItem {
   isCustom?: boolean
   isRequired?: boolean
   customNotes?: string
+  estimatedPriceCAD?: number
+  priceSource?: 'manual' | 'openai' | 'user_override'
+  lastEstimatedAt?: string
 }
 
 export interface OfferDetails {

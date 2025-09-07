@@ -30,7 +30,16 @@ export const DocumentsTab: React.FC = () => {
   // const [isGenerating, setIsGenerating] = useState<string | null>(null)
   const [previewDoc, setPreviewDoc] = useState<DocumentType | null>(null)
   const [previewContent, setPreviewContent] = useState<string>('')
-  const [profileGearItems, setProfileGearItems] = useState<Array<{ id: string; name: string; isCustom: boolean; isRequired: boolean; customNotes: string }>>([])
+  const [profileGearItems, setProfileGearItems] = useState<Array<{ 
+    id: string; 
+    name: string; 
+    isCustom: boolean; 
+    isRequired: boolean; 
+    customNotes: string;
+    estimatedPriceCAD?: number;
+    priceSource?: 'manual' | 'openai' | 'user_override';
+    lastEstimatedAt?: string;
+  }>>([])
   const [isLoadingData, setIsLoadingData] = useState(false)
   const [flatServiceOverrides, setFlatServiceOverrides] = useState<Record<string, { rate: number; enabled: boolean }>>({})
   const [tieredRateOverrides, setTieredRateOverrides] = useState<Record<string, { rate: number; enabled: boolean }>>({})
@@ -134,11 +143,11 @@ export const DocumentsTab: React.FC = () => {
             setTieredRateOverrides(tieredOverridesMap)
           }
 
-          // Load company's base gear items first
+          // Load company's base gear items first with pricing
           console.log('Loading company gear items for company:', company.id)
           const { data: companyGearData, error: companyGearError } = await supabase
             .from('gear_items')
-            .select('id, name')
+            .select('id, name, estimated_price_cad, price_source, last_estimated_at')
             .eq('company_id', company.id)
 
           if (companyGearError) {
@@ -152,7 +161,10 @@ export const DocumentsTab: React.FC = () => {
               name: item.name,
               isCustom: false,
               isRequired: false, // Default to not required
-              customNotes: ''
+              customNotes: '',
+              estimatedPriceCAD: item.estimated_price_cad || undefined,
+              priceSource: item.price_source || undefined,
+              lastEstimatedAt: item.last_estimated_at || undefined
             })) || []
             
             console.log('Base company gear:', baseGear)
@@ -188,11 +200,11 @@ export const DocumentsTab: React.FC = () => {
             }
           }
 
-          // Also load custom gear items for this profile
+          // Also load custom gear items for this profile with pricing
           console.log('Loading custom gear items for profile:', profile.id)
           const { data: customGearData, error: customGearError } = await supabase
             .from('hiree_custom_gear_items')
-            .select('id, name, is_required, custom_notes')
+            .select('id, name, is_required, custom_notes, estimated_price_cad, price_source, last_estimated_at')
             .eq('profile_id', profile.id)
 
           if (customGearError) {
@@ -205,7 +217,10 @@ export const DocumentsTab: React.FC = () => {
                 name: item.name,
                 isCustom: true,
                 isRequired: item.is_required || false,
-                customNotes: item.custom_notes || ''
+                customNotes: item.custom_notes || '',
+                estimatedPriceCAD: item.estimated_price_cad || undefined,
+                priceSource: item.price_source || undefined,
+                lastEstimatedAt: item.last_estimated_at || undefined
               }))
               console.log('Adding custom gear items:', customGear)
               
@@ -488,15 +503,37 @@ export const DocumentsTab: React.FC = () => {
         `
 
       case 'gear':
+        const totalGearCost = profileGearItems.reduce((sum, item) => sum + (item.estimatedPriceCAD || 0), 0)
         return `
           ${logoBlock()}
           ${topTitle("Equipment, Gear & Supply Obligations")}
           ${hireeBlock()}
           <p style="color:#1f2937">All new hires are required to have the following equipment prior to their first day of work. Equipment must be in working condition and available for inspection. Proof of Transport Canada drone certification is mandatory. Rentals may be accepted temporarily with prior written approval.</p>
           <h3 style="margin:14px 0 8px;font-size:16px;color:#0f172a">Required Equipment</h3>
-          <ul style="margin-top:8px;padding-left:18px">
-            ${profileGearItems.map(item => `<li style="margin:4px 0;color:#111827">${escapeHtml(item.name)}</li>`).join('')}
-          </ul>
+          <table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:14px">
+            <thead>
+              <tr style="background-color:#f9fafb">
+                <th style="border:1px solid #d1d5db;padding:8px;text-align:left;font-weight:600;color:#374151">Equipment Item</th>
+                <th style="border:1px solid #d1d5db;padding:8px;text-align:right;font-weight:600;color:#374151;width:120px">Estimated Cost (CAD)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${profileGearItems.map(item => `
+                <tr>
+                  <td style="border:1px solid #d1d5db;padding:8px;color:#111827">${escapeHtml(item.name)}</td>
+                  <td style="border:1px solid #d1d5db;padding:8px;text-align:right;color:#111827;font-weight:500">
+                    ${item.estimatedPriceCAD ? `$${item.estimatedPriceCAD.toFixed(2)}` : 'Not estimated'}
+                  </td>
+                </tr>
+              `).join('')}
+              ${totalGearCost > 0 ? `
+                <tr style="background-color:#f3f4f6;font-weight:600">
+                  <td style="border:1px solid #d1d5db;padding:8px;color:#111827">Total Estimated Cost</td>
+                  <td style="border:1px solid #d1d5db;padding:8px;text-align:right;color:#111827">$${totalGearCost.toFixed(2)}</td>
+                </tr>
+              ` : ''}
+            </tbody>
+          </table>
           ${addendumBlock(templates.find(t => t.documentType === 'gear')?.addendum || '')}
           ${signatureBlock("Hiree Signature", signatures.find(s => s.signatureType === 'hiree')?.signatureData || '')}
           ${signatureBlock("Company Representative Signature", signatures.find(s => s.signatureType === 'company')?.signatureData || '')}
