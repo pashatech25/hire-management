@@ -8,6 +8,7 @@ import { CardContent, CardHeader } from '../ui/Card'
 import { Building2, Upload, Image as ImageIcon, Save, CheckCircle } from 'lucide-react'
 import { dataURLFromFile } from '../../lib/utils'
 import { supabase } from '../../lib/supabase'
+import { StorageService } from '../../lib/storageService'
 import type { Company } from '../../types'
 
 export const CompanyTab: React.FC = () => {
@@ -139,36 +140,26 @@ export const CompanyTab: React.FC = () => {
   }
 
   const handleLogoUpload = async (file: File) => {
-    if (!file) return
+    if (!file || !company?.id) return
 
     setIsUploading(true)
     try {
-      // Upload to Supabase Storage
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}.${fileExt}`
-      const filePath = `logos/${fileName}`
-
-      const { error: uploadError } = await supabase.storage
-        .from('company-assets')
-        .upload(filePath, file)
-
-      if (uploadError) throw uploadError
-
-      // Get public URL
-      const { data } = supabase.storage
-        .from('company-assets')
-        .getPublicUrl(filePath)
+      // Convert file to base64 for StorageService
+      const base64Data = await dataURLFromFile(file)
+      
+      // Upload using StorageService
+      const logoUrl = await StorageService.uploadCompanyLogo(base64Data, company.id)
 
       // Update company data
       const updatedCompany = {
         ...company,
         name: company?.name || 'Solution Gate Media',
         jurisdiction: company?.jurisdiction || 'Ontario, Canada',
-        logoUrl: data.publicUrl,
+        logoUrl: logoUrl,
       }
 
       setCompany(updatedCompany as any)
-      setLogoPreview(data.publicUrl)
+      setLogoPreview(logoUrl)
     } catch (error) {
       console.error('Error uploading logo:', error)
     } finally {

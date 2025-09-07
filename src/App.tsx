@@ -1,4 +1,5 @@
 import React from 'react'
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { NotificationProvider } from './contexts/NotificationContext'
 import { LoginForm } from './components/auth/LoginForm'
@@ -13,6 +14,7 @@ import { TemplatesTab } from './components/tabs/TemplatesTab'
 import { SignaturesTab } from './components/tabs/SignaturesTab'
 import { DataTab } from './components/tabs/DataTab'
 import { DocumentsTab } from './components/tabs/DocumentsTab'
+import SignaturePage from './pages/SignaturePage'
 import { useAppStore } from './store/useAppStore'
 
 const AppContent: React.FC = () => {
@@ -70,11 +72,16 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <AppContent />
-      </NotificationProvider>
-    </AuthProvider>
+    <Router>
+      <AuthProvider>
+        <NotificationProvider>
+          <Routes>
+            <Route path="/sign/:token" element={<SignaturePage />} />
+            <Route path="/*" element={<AppContent />} />
+          </Routes>
+        </NotificationProvider>
+      </AuthProvider>
+    </Router>
   )
 }
 

@@ -1,16 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
+import { useAuth } from '../../contexts/AuthContext'
+import { useNotification } from '../../contexts/NotificationContext'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { CardContent, CardHeader } from '../ui/Card'
 import { PenTool, Save, Trash2, Download, Upload, User, Building2 } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { StorageService } from '../../lib/storageService'
 import type { Signature } from '../../types'
 
 export const SignaturesTab: React.FC = () => {
-  const { signatures, setSignatures } = useAppStore()
+  const { signatures, setSignatures, profile, company } = useAppStore()
+  const { user } = useAuth()
+  const { showSuccess, showError } = useNotification()
   const [isDrawing, setIsDrawing] = useState(false)
   const [signatureType, setSignatureType] = useState<'hiree' | 'company'>('hiree')
   const [signatureName, setSignatureName] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [canvasSize] = useState({ width: 400, height: 200 })
 
@@ -109,34 +116,119 @@ export const SignaturesTab: React.FC = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
   }
 
-  const saveSignature = () => {
+  const saveSignature = async () => {
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const dataURL = canvas.toDataURL('image/png')
-
     if (!signatureName.trim()) {
-      alert('Please enter a name for this signature')
+      showError('Name Required', 'Please enter a name for this signature')
       return
     }
 
-    const signature: Signature = {
-      id: `signature_${Date.now()}`,
-      profileId: 'temp_profile_id', // This would be set from the current profile
-      signatureType,
-      signatureData: dataURL,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    if (!user) {
+      showError('Authentication Required', 'Please log in to save signatures')
+      return
     }
 
-    setSignatures([...signatures, signature])
-    setSignatureName('')
-    clearSignature()
+    setIsSaving(true)
+    try {
+      const dataURL = canvas.toDataURL('image/png')
+      
+      // Save directly to database (bypass storage for now)
+      const { data, error } = await supabase
+        .from('signatures')
+        .insert({
+          profile_id: profile?.id || null,
+          company_id: company?.id || null,
+          signature_type: signatureType,
+          signature_data: dataURL, // Store base64 directly
+          signature_name: signatureName.trim(),
+          owner_id: user.id
+        })
+        .select()
+        .single()
+
+      if (error) {
+        throw new Error(`Failed to save signature: ${error.message}`)
+      }
+
+      // Update local state
+      const newSignature: Signature = {
+        id: data.id,
+        profileId: data.profile_id || 'temp_profile',
+        signatureType: data.signature_type,
+        signatureData: dataURL, // Use base64 data
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      }
+
+      setSignatures([...signatures, newSignature])
+      setSignatureName('')
+      clearSignature()
+      showSuccess('Signature Saved', 'Signature has been saved successfully')
+    } catch (error) {
+      console.error('Error saving signature:', error)
+      showError('Save Failed', error instanceof Error ? error.message : 'Failed to save signature')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const deleteSignature = (id: string) => {
-    setSignatures(signatures.filter(sig => sig.id !== id))
+  const deleteSignature = async (id: string) => {
+    try {
+      // Delete from database
+      const { error } = await supabase
+        .from('signatures')
+        .delete()
+        .eq('id', id)
+
+      if (error) {
+        throw new Error(`Failed to delete signature: ${error.message}`)
+      }
+
+      // Update local state
+      setSignatures(signatures.filter(sig => sig.id !== id))
+      showSuccess('Signature Deleted', 'Signature has been deleted successfully')
+    } catch (error) {
+      console.error('Error deleting signature:', error)
+      showError('Delete Failed', error instanceof Error ? error.message : 'Failed to delete signature')
+    }
   }
+
+  // Load signatures from database
+  useEffect(() => {
+    const loadSignatures = async () => {
+      if (!user) return
+
+      try {
+        const { data, error } = await supabase
+          .from('signatures')
+          .select('*')
+          .eq('owner_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (error) {
+          console.error('Error loading signatures:', error)
+          return
+        }
+
+        const loadedSignatures: Signature[] = (data || []).map(item => ({
+          id: item.id,
+          profileId: item.profile_id || 'temp_profile',
+          signatureType: item.signature_type,
+          signatureData: item.signature_data,
+          createdAt: item.created_at,
+          updatedAt: item.updated_at,
+        }))
+
+        setSignatures(loadedSignatures)
+      } catch (error) {
+        console.error('Error loading signatures:', error)
+      }
+    }
+
+    loadSignatures()
+  }, [user, setSignatures])
 
   const downloadSignature = (signature: Signature) => {
     const link = document.createElement('a')
@@ -254,11 +346,11 @@ export const SignaturesTab: React.FC = () => {
             <div className="flex space-x-2">
               <Button
                 onClick={saveSignature}
-                disabled={!signatureName.trim()}
+                disabled={!signatureName.trim() || isSaving}
                 className="bg-primary-600 hover:bg-primary-700"
               >
                 <Save className="h-4 w-4 mr-2" />
-                Save Signature
+                {isSaving ? 'Saving...' : 'Save Signature'}
               </Button>
             </div>
           </div>
@@ -398,20 +490,20 @@ export const SignaturesTab: React.FC = () => {
         <CardHeader>
           <h3 className="text-lg font-medium text-gray-900">Data Storage</h3>
         </CardHeader>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <div className="flex items-start space-x-3">
             <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
             </div>
             <div className="text-sm">
-              <h4 className="font-medium text-blue-900 mb-1">Signature Data Storage</h4>
-              <p className="text-blue-700">
-                <strong>Currently:</strong> All signature data is stored in browser memory and will be lost on refresh.
+              <h4 className="font-medium text-yellow-900 mb-1">Signature Data Storage</h4>
+              <p className="text-yellow-700">
+                <strong>Current:</strong> Signatures are stored directly in the database as base64 data.
               </p>
-              <p className="text-blue-700 mt-2">
-                <strong>Persistence:</strong> Set up Supabase database to automatically save signatures when captured.
+              <p className="text-yellow-700 mt-2">
+                <strong>Note:</strong> This is a temporary solution. Storage policies need to be configured for optimal performance.
               </p>
             </div>
           </div>

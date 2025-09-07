@@ -397,6 +397,32 @@ export interface Signature {
   updatedAt: string
 }
 
+export interface DocumentSignatureLink {
+  id: string
+  profileId: string
+  companyId: string
+  documentType: 'compensation' | 'acceptance' | 'gear_obligations' | 'payment_schedule' | 'waiver' | 'noncompete'
+  documentData: any
+  signatureToken: string
+  isSigned: boolean
+  signedAt?: string
+  signedBy?: 'tenant' | 'hiree'
+  tenantSignatureData?: string
+  hireeSignatureData?: string
+  tenantInitialData?: string
+  hireeInitialData?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SignatureResetLog {
+  id: string
+  signatureLinkId: string
+  resetBy: string
+  resetReason?: string
+  resetAt: string
+}
+
 export interface HireeAccess {
   id: string
   profileId: string

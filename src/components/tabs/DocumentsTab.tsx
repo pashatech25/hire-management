@@ -4,12 +4,14 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useNotification } from '../../contexts/NotificationContext'
 import { Button } from '../ui/Button'
 import { CardContent, CardHeader } from '../ui/Card'
-import { FileText, Eye, Download } from 'lucide-react'
+import { FileText, Eye, Download, PenTool, Share2, RotateCcw } from 'lucide-react'
 // import { PDFGenerator, downloadPDF } from '../../lib/pdfGenerator'
 import { formatCurrency, formatLongDate, escapeHtml } from '../../lib/utils'
 import { supabase } from '../../lib/supabase'
 import { SimplePDFGenerator } from '../../lib/simplePDFGenerator'
-import type { DocumentType, Tier, TieredRate } from '../../types'
+import { SignatureService } from '../../lib/signatureService'
+import { SignatureModal } from '../SignatureModal'
+import type { DocumentType, Tier, TieredRate, DocumentSignatureLink } from '../../types'
 
 export const DocumentsTab: React.FC = () => {
   const { 
@@ -43,6 +45,9 @@ export const DocumentsTab: React.FC = () => {
   const [isLoadingData, setIsLoadingData] = useState(false)
   const [flatServiceOverrides, setFlatServiceOverrides] = useState<Record<string, { rate: number; enabled: boolean }>>({})
   const [tieredRateOverrides, setTieredRateOverrides] = useState<Record<string, { rate: number; enabled: boolean }>>({})
+  const [signatureLinks, setSignatureLinks] = useState<DocumentSignatureLink[]>([])
+  const [isCreatingLink, setIsCreatingLink] = useState<string | null>(null)
+  const [showSignatureModal, setShowSignatureModal] = useState<{ documentType: DocumentType; signatureLink: DocumentSignatureLink } | null>(null)
 
   // Load company services and hiree overrides when profile or company changes
   useEffect(() => {
@@ -413,6 +418,59 @@ export const DocumentsTab: React.FC = () => {
       </div>
     `
 
+  // Get signature data for current document type
+  const getSignatureData = (signatureType: 'tenant' | 'hiree') => {
+    if (!previewDoc) return ''
+    
+    // Map frontend document types to database document types (same as SignatureService)
+    const mapDocumentType = (docType: string): 'compensation' | 'acceptance' | 'gear_obligations' | 'payment_schedule' | 'waiver' | 'noncompete' => {
+      const mapping: Record<string, 'compensation' | 'acceptance' | 'gear_obligations' | 'payment_schedule' | 'waiver' | 'noncompete'> = {
+        'pay': 'compensation',
+        'offer': 'acceptance', 
+        'gear': 'gear_obligations',
+        'waiver': 'waiver', // Each document type gets its own signature type
+        'noncompete': 'noncompete' // Each document type gets its own signature type
+      }
+      return mapping[docType] || 'compensation'
+    }
+    
+    const mappedDocType = mapDocumentType(previewDoc)
+    
+    // Debug logging
+    console.log('getSignatureData debug:', {
+      previewDoc,
+      mappedDocType,
+      signatureType,
+      signatureLinksCount: signatureLinks.length,
+      signaturesCount: signatures.length
+    })
+    
+    // ALWAYS check signature links first - these are document-specific
+    const currentSignatureLink = signatureLinks.find(link => link.documentType === mappedDocType)
+    
+    if (currentSignatureLink) {
+      console.log('Found signature link for document:', {
+        documentType: currentSignatureLink.documentType,
+        isSigned: currentSignatureLink.isSigned,
+        hasTenantSig: !!currentSignatureLink.tenantSignatureData,
+        hasHireeSig: !!currentSignatureLink.hireeSignatureData
+      })
+      
+      if (signatureType === 'tenant') {
+        // Show tenant signature even if document is not fully signed
+        return currentSignatureLink.tenantSignatureData || ''
+      } else {
+        // Show hiree signature only if document is fully signed
+        return currentSignatureLink.isSigned ? (currentSignatureLink.hireeSignatureData || '') : ''
+      }
+    }
+    
+    // If no signature link exists for this document, return empty
+    // This ensures signatures only show for documents that have signature links
+    console.log('No signature link found for document type:', mappedDocType)
+    return ''
+  }
+
     // Footer block
     const footerBlock = (title: string, docId: string) => `
       <div style="margin-top:30px;padding-top:20px;border-top:1px solid #e2e8f0;color:#6b7280;font-size:12px;text-align:center">
@@ -473,8 +531,8 @@ export const DocumentsTab: React.FC = () => {
           <h3 style="margin:14px 0 8px;font-size:16px;color:#0f172a">5. Governing Law</h3>
           <p style="color:#1f2937">This Agreement shall be governed by and construed in accordance with the laws of ${j}.</p>
           ${addendumBlock(templates.find(t => t.documentType === 'waiver')?.addendum || '')}
-          ${signatureBlock("Trainee Signature", signatures.find(s => s.signatureType === 'hiree')?.signatureData || '')}
-          ${signatureBlock("Company Representative Signature", signatures.find(s => s.signatureType === 'company')?.signatureData || '')}
+          ${signatureBlock("Trainee Signature", getSignatureData('hiree'))}
+          ${signatureBlock("Company Representative Signature", getSignatureData('tenant'))}
           ${footerBlock("Training Waiver & Liability Release", id)}
           ${initialsPage("Training Waiver & Liability Release", id, templates.find(t => t.documentType === 'waiver')?.clauses || [])}
         `
@@ -496,8 +554,8 @@ export const DocumentsTab: React.FC = () => {
           <h3 style="margin:14px 0 8px;font-size:16px;color:#0f172a">5. Governing Law</h3>
           <p style="color:#1f2937">This Agreement shall be governed by and construed in accordance with the laws of ${j}.</p>
           ${addendumBlock(templates.find(t => t.documentType === 'noncompete')?.addendum || '')}
-          ${signatureBlock("Employee Signature", signatures.find(s => s.signatureType === 'hiree')?.signatureData || '')}
-          ${signatureBlock("Company Representative Signature", signatures.find(s => s.signatureType === 'company')?.signatureData || '')}
+          ${signatureBlock("Employee Signature", getSignatureData('hiree'))}
+          ${signatureBlock("Company Representative Signature", getSignatureData('tenant'))}
           ${footerBlock("Non-Compete Agreement", id)}
           ${initialsPage("Non-Compete Agreement", id, templates.find(t => t.documentType === 'noncompete')?.clauses || [])}
         `
@@ -535,8 +593,8 @@ export const DocumentsTab: React.FC = () => {
             </tbody>
           </table>
           ${addendumBlock(templates.find(t => t.documentType === 'gear')?.addendum || '')}
-          ${signatureBlock("Hiree Signature", signatures.find(s => s.signatureType === 'hiree')?.signatureData || '')}
-          ${signatureBlock("Company Representative Signature", signatures.find(s => s.signatureType === 'company')?.signatureData || '')}
+          ${signatureBlock("Hiree Signature", getSignatureData('hiree'))}
+          ${signatureBlock("Company Representative Signature", getSignatureData('tenant'))}
           ${footerBlock("Equipment, Gear & Supply Obligations", id)}
           ${initialsPage("Equipment, Gear & Supply Obligations", id, templates.find(t => t.documentType === 'gear')?.clauses || [])}
         `
@@ -699,8 +757,8 @@ export const DocumentsTab: React.FC = () => {
             <li>All other terms of the Employment Agreement continue to apply; where there is a conflict, this Compensation Agreement prevails unless superseded in writing.</li>
           </ol>
           ${addendumBlock(templates.find(t => t.documentType === 'pay')?.addendum || '')}
-          ${signatureBlock("Employer Signature", signatures.find(s => s.signatureType === 'company')?.signatureData || '')}
-          ${signatureBlock("Employee Signature", signatures.find(s => s.signatureType === 'hiree')?.signatureData || '')}
+          ${signatureBlock("Employer Signature", getSignatureData('tenant'))}
+          ${signatureBlock("Employee Signature", getSignatureData('hiree'))}
           ${footerBlock("Compensation Agreement", id)}
           ${initialsPage("Compensation Agreement", id, templates.find(t => t.documentType === 'pay')?.clauses || [])}
         `
@@ -741,7 +799,7 @@ export const DocumentsTab: React.FC = () => {
           <div>Per: ____________ ____________ (SEAL)</div>
           <h3 style="margin-top:24px;font-size:16px;color:#0f172a">Acceptance</h3>
           <p style="color:#1f2937">I accept this offer of co-working terms as outlined above.</p>
-          ${signatureBlock("Freelancer Signature", signatures.find(s => s.signatureType === 'hiree')?.signatureData || '')}
+          ${signatureBlock("Freelancer Signature", getSignatureData('hiree'))}
           ${footerBlock("Acceptance Letter", id)}
           ${initialsPage("Acceptance Letter", id, templates.find(t => t.documentType === 'offer')?.clauses || [])}
         `
@@ -756,6 +814,14 @@ export const DocumentsTab: React.FC = () => {
     const content = buildDocument(docType)
     setPreviewContent(content)
     setPreviewDoc(docType)
+  }
+
+  // Refresh document preview
+  const refreshDocumentPreview = () => {
+    if (previewDoc) {
+      const content = buildDocument(previewDoc)
+      setPreviewContent(content)
+    }
   }
 
   // Generate PDF (placeholder for now)
@@ -784,6 +850,184 @@ export const DocumentsTab: React.FC = () => {
     } catch (error) {
       console.error('Error generating PDF:', error)
       showError('PDF Generation Failed', 'Failed to generate PDF. Please try again.')
+    }
+  }
+
+  // Load signature links for the current profile
+  useEffect(() => {
+    const loadSignatureLinks = async () => {
+      if (!profile || profile.id.startsWith('profile_')) {
+        setSignatureLinks([])
+        return
+      }
+
+      try {
+        const links = await SignatureService.getSignatureLinksForProfile(profile.id)
+        setSignatureLinks(links)
+        
+        // Refresh document preview if one is currently shown
+        refreshDocumentPreview()
+      } catch (error) {
+        console.error('Error loading signature links:', error)
+      }
+    }
+
+    loadSignatureLinks()
+  }, [profile])
+
+  // Load company signatures from the signatures table (for signature link creation)
+  useEffect(() => {
+    const loadCompanySignatures = async () => {
+      if (!user || !company) return
+
+      try {
+        const { data, error } = await supabase
+          .from('signatures')
+          .select('*')
+          .eq('company_id', company.id)
+          .eq('signature_type', 'company')
+
+        if (error) {
+          console.error('Error loading company signatures:', error)
+          return
+        }
+
+        if (data) {
+          // Convert to frontend format and update store
+          const companySignatures = data.map(sig => ({
+            id: sig.id,
+            profileId: sig.profile_id || 'temp_profile', // Handle null profile_id
+            companyId: sig.company_id,
+            signatureType: sig.signature_type as 'company' | 'hiree',
+            signatureData: sig.signature_data,
+            signatureName: sig.signature_name,
+            createdAt: sig.created_at,
+            updatedAt: sig.updated_at
+          }))
+          
+          // Update the store with company signatures
+          useAppStore.getState().setSignatures(companySignatures)
+        }
+      } catch (error) {
+        console.error('Error loading company signatures:', error)
+      }
+    }
+
+    loadCompanySignatures()
+  }, [user, company])
+
+  const handleCreateSignatureLink = async (documentType: DocumentType) => {
+    if (!profile || !company) return
+
+    try {
+      setIsCreatingLink(documentType)
+      const documentData = buildDocument(documentType)
+      const signatureLink = await SignatureService.createSignatureLink(
+        profile.id,
+        company.id,
+        documentType,
+        { content: documentData, profile, company, offerDetails }
+      )
+      
+      // If there's a company signature, automatically add it to the signature link
+      const companySignature = signatures.find(sig => 
+        sig.signatureType === 'company' && 
+        (sig.profileId === null || sig.profileId === 'temp_profile' || sig.profileId === profile.id)
+      )
+      
+      if (companySignature) {
+        // Update the signature link with the company signature (but don't mark as fully signed)
+        const updatedLink = {
+          ...signatureLink,
+          tenantSignatureData: companySignature.signatureData,
+          // Keep isSigned as false so hiree can still sign
+          isSigned: false,
+          signedBy: undefined
+        }
+        
+        // Update the database with company signature but keep is_signed as false
+        await supabase
+          .from('signatures')
+          .update({
+            tenant_signature_data: companySignature.signatureData,
+            // Don't set is_signed to true - let hiree complete the signing
+            is_signed: false,
+            signed_by: null,
+            signed_at: null
+          })
+          .eq('id', signatureLink.id)
+        
+        setSignatureLinks(prev => [updatedLink, ...prev])
+        refreshDocumentPreview()
+        showSuccess('Signature Link Created', 'Signature link created with company signature pre-filled. Hiree can now sign to complete the document.')
+      } else {
+        setSignatureLinks(prev => [signatureLink, ...prev])
+        showSuccess('Signature Link Created', 'Share this link with the hiree for online signing.')
+      }
+    } catch (error) {
+      console.error('Error creating signature link:', error)
+      showError('Failed to Create Link', 'Could not create signature link. Please try again.')
+    } finally {
+      setIsCreatingLink(null)
+    }
+  }
+
+  const handleCopySignatureLink = (signatureLink: DocumentSignatureLink) => {
+    const url = SignatureService.generateSignatureUrl(signatureLink.signatureToken)
+    navigator.clipboard.writeText(url)
+    showSuccess('Link Copied', 'Signature link copied to clipboard.')
+  }
+
+  const handleSignAsTenant = async (signatureLink: DocumentSignatureLink) => {
+    setShowSignatureModal({ 
+      documentType: signatureLink.documentType as DocumentType, 
+      signatureLink 
+    })
+  }
+
+  const handleTenantSign = async (signatureData: string, initialData: string) => {
+    if (!showSignatureModal) return
+
+    try {
+      await SignatureService.signDocument(
+        showSignatureModal.signatureLink.signatureToken,
+        signatureData,
+        initialData,
+        'tenant'
+      )
+      
+      // Reload signature links
+      const links = await SignatureService.getSignatureLinksForProfile(profile!.id)
+      setSignatureLinks(links)
+      
+      // Refresh the document preview to show the new signature
+      refreshDocumentPreview()
+      
+      showSuccess('Document Signed', 'You have successfully signed the document as tenant.')
+    } catch (error) {
+      console.error('Error signing as tenant:', error)
+      showError('Failed to Sign', 'Could not sign document. Please try again.')
+    }
+  }
+
+  const handleResetSignature = async (signatureLink: DocumentSignatureLink) => {
+    if (!confirm('Are you sure you want to reset this signature? This will allow the hiree to sign again.')) {
+      return
+    }
+
+    try {
+      await SignatureService.resetSignature(signatureLink.id)
+      // Reload signature links
+      const links = await SignatureService.getSignatureLinksForProfile(profile!.id)
+      setSignatureLinks(links)
+      
+      // Refresh document preview if one is currently shown
+      refreshDocumentPreview()
+      
+      showSuccess('Signature Reset', 'The signature has been reset and can be signed again.')
+    } catch (error) {
+      console.error('Error resetting signature:', error)
+      showError('Failed to Reset', 'Could not reset signature. Please try again.')
     }
   }
 
@@ -830,28 +1074,141 @@ export const DocumentsTab: React.FC = () => {
             <div key={doc.type} className="border border-gray-200 rounded-xl p-4 bg-white">
               <h4 className="font-medium text-gray-900 mb-2">{doc.title}</h4>
               <p className="text-sm text-gray-500 mb-4">{doc.description}</p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePreview(doc.type)}
-                  className="flex-1"
-                >
-                  <Eye className="h-4 w-4 mr-1" />
-                  Preview
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleGeneratePDF}
-                  className="flex-1"
-                >
-                  <Download className="h-4 w-4 mr-1" />
-                  PDF
-                </Button>
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handlePreview(doc.type)}
+                    className="flex-1"
+                  >
+                    <Eye className="h-4 w-4 mr-1" />
+                    Preview
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleGeneratePDF}
+                    className="flex-1"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    PDF
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleCreateSignatureLink(doc.type)}
+                    disabled={isCreatingLink === doc.type}
+                    className="flex-1"
+                  >
+                    <Share2 className="h-4 w-4 mr-1" />
+                    {isCreatingLink === doc.type ? 'Creating...' : 'Share Link'}
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
         </div>
+
+        {/* Signature Links Section */}
+        {signatureLinks.length > 0 && (
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Signature Links</h3>
+            <div className="space-y-3">
+              {signatureLinks.map((link) => (
+                <div key={link.id} className="border border-gray-200 rounded-lg p-4 bg-white">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-medium text-gray-900 capitalize">
+                          {link.documentType === 'compensation' ? 'Compensation' :
+                           link.documentType === 'acceptance' ? 'Acceptance Letter' :
+                           link.documentType === 'gear_obligations' ? 'Gear Obligations' :
+                           link.documentType === 'payment_schedule' ? 'Payment Schedule' :
+                           link.documentType === 'waiver' ? 'Training Waiver' :
+                           link.documentType === 'noncompete' ? 'Non-Compete' :
+                           link.documentType.replace('_', ' ')} Document
+                        </h4>
+                        <span className={`px-2 py-1 text-xs rounded-full ${
+                          link.isSigned 
+                            ? 'bg-green-100 text-green-800' 
+                            : link.tenantSignatureData 
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {link.isSigned ? 'Fully Signed' : link.tenantSignatureData ? 'Company Signed' : 'Pending'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-500">
+                        Created: {new Date(link.createdAt).toLocaleDateString()}
+                        {link.signedAt && (
+                          <span className="ml-2">
+                            • Signed: {new Date(link.signedAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </p>
+                      {link.isSigned && (
+                        <div className="mt-2 flex gap-4">
+                          {link.tenantSignatureData && (
+                            <div className="text-xs">
+                              <p className="text-gray-500">Tenant Signature:</p>
+                              <img 
+                                src={link.tenantSignatureData} 
+                                alt="Tenant Signature" 
+                                className="border border-gray-300 rounded max-w-24 h-12 object-contain"
+                              />
+                            </div>
+                          )}
+                          {link.hireeSignatureData && (
+                            <div className="text-xs">
+                              <p className="text-gray-500">Hiree Signature:</p>
+                              <img 
+                                src={link.hireeSignatureData} 
+                                alt="Hiree Signature" 
+                                className="border border-gray-300 rounded max-w-24 h-12 object-contain"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCopySignatureLink(link)}
+                      >
+                        <Share2 className="h-4 w-4 mr-1" />
+                        Copy Link
+                      </Button>
+                      {!link.tenantSignatureData && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSignAsTenant(link)}
+                        >
+                          <PenTool className="h-4 w-4 mr-1" />
+                          Sign as Tenant
+                        </Button>
+                      )}
+                      {link.isSigned && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleResetSignature(link)}
+                        >
+                          <RotateCcw className="h-4 w-4 mr-1" />
+                          Reset
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Preview Area */}
         {previewDoc && (
@@ -861,13 +1218,22 @@ export const DocumentsTab: React.FC = () => {
                 <h3 className="font-medium text-gray-900">
                   Preview: {documentTypes.find(d => d.type === previewDoc)?.title}
                 </h3>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPreviewDoc(null)}
-                >
-                  Close
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={refreshDocumentPreview}
+                  >
+                    Refresh
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPreviewDoc(null)}
+                  >
+                    Close
+                  </Button>
+                </div>
               </div>
             </div>
             <div className="p-6 bg-white">
@@ -882,6 +1248,16 @@ export const DocumentsTab: React.FC = () => {
               />
             </div>
           </div>
+        )}
+
+        {/* Signature Modal */}
+        {showSignatureModal && (
+          <SignatureModal
+            isOpen={!!showSignatureModal}
+            onClose={() => setShowSignatureModal(null)}
+            onSign={handleTenantSign}
+            title={`Sign ${showSignatureModal.documentType.replace('_', ' ')} Document`}
+          />
         )}
       </CardContent>
     </div>
