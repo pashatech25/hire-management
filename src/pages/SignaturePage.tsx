@@ -218,19 +218,19 @@ const SignaturePage: React.FC = () => {
           <p className="text-gray-600">Please review and sign the document below</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="space-y-8">
           {/* Document Preview */}
           <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Document Preview</h2>
+            <h2 className="text-2xl font-semibold mb-6">Document Preview</h2>
             <div 
-              className="prose max-w-none"
+              className="prose max-w-none text-sm leading-relaxed"
               dangerouslySetInnerHTML={{ __html: buildDocumentPreview() }}
             />
           </Card>
 
           {/* Signature Section */}
           <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Digital Signature</h2>
+            <h2 className="text-2xl font-semibold mb-6">Digital Signature</h2>
             
             {signatureLink.isSigned ? (
               <div className="text-center py-8">
@@ -251,71 +251,99 @@ const SignaturePage: React.FC = () => {
                 )}
               </div>
             ) : (
-              <div className="space-y-6">
-                {/* Signature Canvas */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Signature *
-                  </label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                    <canvas
-                      ref={signatureCanvasRef}
-                      width={400}
-                      height={150}
-                      className="border border-gray-200 rounded cursor-crosshair"
-                      onMouseDown={() => startDrawing(signatureCanvasRef)}
-                      onMouseMove={(e) => draw(signatureCanvasRef, e)}
-                      onMouseUp={() => stopDrawing(signatureCanvasRef)}
-                      onMouseLeave={() => stopDrawing(signatureCanvasRef)}
-                    />
-                    <div className="mt-2 flex justify-between">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => clearCanvas(signatureCanvasRef)}
-                      >
-                        Clear
-                      </Button>
+              <div className="space-y-8">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-blue-800">Instructions</h3>
+                      <div className="mt-2 text-sm text-blue-700">
+                        <p>Please provide both your signature and initials below. Use your mouse or touch to draw on the canvas areas.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Initials Canvas */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Initials *
-                  </label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                    <canvas
-                      ref={initialCanvasRef}
-                      width={200}
-                      height={100}
-                      className="border border-gray-200 rounded cursor-crosshair"
-                      onMouseDown={() => startDrawing(initialCanvasRef)}
-                      onMouseMove={(e) => draw(initialCanvasRef, e)}
-                      onMouseUp={() => stopDrawing(initialCanvasRef)}
-                      onMouseLeave={() => stopDrawing(initialCanvasRef)}
-                    />
-                    <div className="mt-2 flex justify-between">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => clearCanvas(initialCanvasRef)}
-                      >
-                        Clear
-                      </Button>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Signature Canvas */}
+                  <div>
+                    <label className="block text-lg font-medium text-gray-700 mb-3">
+                      Signature *
+                    </label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+                      <canvas
+                        ref={signatureCanvasRef}
+                        width={400}
+                        height={150}
+                        className="border border-gray-200 rounded cursor-crosshair bg-white"
+                        onMouseDown={() => startDrawing(signatureCanvasRef)}
+                        onMouseMove={(e) => draw(signatureCanvasRef, e)}
+                        onMouseUp={() => stopDrawing(signatureCanvasRef)}
+                        onMouseLeave={() => stopDrawing(signatureCanvasRef)}
+                      />
+                      <div className="mt-3 flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Draw your signature above</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => clearCanvas(signatureCanvasRef)}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Initials Canvas */}
+                  <div>
+                    <label className="block text-lg font-medium text-gray-700 mb-3">
+                      Initials *
+                    </label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 bg-gray-50">
+                      <canvas
+                        ref={initialCanvasRef}
+                        width={200}
+                        height={100}
+                        className="border border-gray-200 rounded cursor-crosshair bg-white"
+                        onMouseDown={() => startDrawing(initialCanvasRef)}
+                        onMouseMove={(e) => draw(initialCanvasRef, e)}
+                        onMouseUp={() => stopDrawing(initialCanvasRef)}
+                        onMouseLeave={() => stopDrawing(initialCanvasRef)}
+                      />
+                      <div className="mt-3 flex justify-between items-center">
+                        <span className="text-sm text-gray-500">Draw your initials above</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => clearCanvas(initialCanvasRef)}
+                        >
+                          Clear
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Sign Button */}
-                <Button
-                  onClick={handleSign}
-                  disabled={signing || !signatureData || !initialData}
-                  className="w-full"
-                >
-                  {signing ? 'Signing...' : 'Sign Document'}
-                </Button>
+                <div className="pt-4 border-t border-gray-200">
+                  <Button
+                    onClick={handleSign}
+                    disabled={signing || !signatureData || !initialData}
+                    className="w-full py-3 text-lg"
+                    size="lg"
+                  >
+                    {signing ? 'Signing Document...' : 'Sign Document'}
+                  </Button>
+                  {(!signatureData || !initialData) && (
+                    <p className="text-center text-sm text-gray-500 mt-2">
+                      Please provide both signature and initials to continue
+                    </p>
+                  )}
+                </div>
               </div>
             )}
           </Card>
