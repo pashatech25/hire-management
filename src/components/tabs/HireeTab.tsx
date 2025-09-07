@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNotification } from '../../contexts/NotificationContext'
 import { Input } from '../ui/Input'
 import { Button } from '../ui/Button'
 import { CardContent, CardHeader } from '../ui/Card'
@@ -12,6 +13,7 @@ import type { Profile } from '../../types'
 export const HireeTab: React.FC = () => {
   const { profile, setProfile, company, setCompany } = useAppStore()
   const { user } = useAuth()
+  const { showSuccess, showError, showWarning, showInfo } = useNotification()
   const [isSaving, setIsSaving] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [savedProfiles, setSavedProfiles] = useState<Profile[]>([])
@@ -59,12 +61,12 @@ export const HireeTab: React.FC = () => {
 
   const saveHiree = async () => {
     if (!profile || !company) {
-      alert('Please fill in company information first')
+      showWarning('Company Required', 'Please fill in company information first')
       return
     }
 
     if (!user) {
-      alert('Please log in to save hiree data')
+      showError('Authentication Required', 'Please log in to save hiree data')
       return
     }
 
@@ -110,7 +112,7 @@ export const HireeTab: React.FC = () => {
         setProfile(frontendProfile)
         
         
-        alert('Hiree saved successfully!')
+        showSuccess('Hiree Saved', 'Hiree saved successfully!')
       } else {
         // Existing profile - update
         const { data, error } = await supabase
@@ -140,11 +142,11 @@ export const HireeTab: React.FC = () => {
         setProfile(frontendProfile)
         
         
-        alert('Hiree updated successfully!')
+        showSuccess('Hiree Updated', 'Hiree updated successfully!')
       }
     } catch (error) {
       console.error('Error saving hiree:', error)
-      alert('Error saving hiree. Please try again.')
+      showError('Save Failed', 'Error saving hiree. Please try again.')
     } finally {
       setIsSaving(false)
     }
@@ -152,7 +154,7 @@ export const HireeTab: React.FC = () => {
 
   const loadSavedProfiles = async () => {
     if (!company) {
-      alert('Please save company information first before loading hirees.')
+      showWarning('Company Required', 'Please save company information first before loading hirees.')
       return
     }
 
@@ -192,11 +194,11 @@ export const HireeTab: React.FC = () => {
       setShowLoadDialog(true)
       
       if (!data || data.length === 0) {
-        alert('No saved hirees found for this company.')
+        showInfo('No Hirees Found', 'No saved hirees found for this company.')
       }
     } catch (error) {
       console.error('Error loading profiles:', error)
-      alert(`Error loading saved hirees: ${error instanceof Error ? error.message : 'Please try again.'}`)
+      showError('Load Failed', `Error loading saved hirees: ${error instanceof Error ? error.message : 'Please try again.'}`)
     } finally {
       setIsLoading(false)
     }
@@ -281,18 +283,18 @@ export const HireeTab: React.FC = () => {
     await loadCompanyServicesAndGear()
     
     
-    alert('Hiree loaded successfully! All sections are now enabled.')
+    showSuccess('Hiree Loaded', 'Hiree loaded successfully! All sections are now enabled.')
   }
 
 
   const createSampleHiree = async () => {
     if (!company) {
-      alert('Please save company information first.')
+      showWarning('Company Required', 'Please save company information first.')
       return
     }
 
     if (!user) {
-      alert('Please log in to create sample hiree')
+      showError('Authentication Required', 'Please log in to create sample hiree')
       return
     }
 
@@ -332,10 +334,10 @@ export const HireeTab: React.FC = () => {
 
       if (error) throw error
 
-      alert('Sample hiree created successfully! Click "Load Hiree" to see it.')
+      showSuccess('Sample Hiree Created', 'Sample hiree created successfully! Click "Load Hiree" to see it.')
     } catch (error) {
       console.error('Error creating sample hiree:', error)
-      alert('Error creating sample hiree. Please try again.')
+      showError('Creation Failed', 'Error creating sample hiree. Please try again.')
     } finally {
       setIsSaving(false)
     }

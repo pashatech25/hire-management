@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNotification } from '../../contexts/NotificationContext'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { CardContent, CardHeader } from '../ui/Card'
@@ -12,6 +13,7 @@ import type { Company } from '../../types'
 export const CompanyTab: React.FC = () => {
   const { company, setCompany } = useAppStore()
   const { user } = useAuth()
+  const { showSuccess, showError, showWarning } = useNotification()
   const [, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string>('')
   const [isUploading, setIsUploading] = useState(false)
@@ -194,12 +196,12 @@ export const CompanyTab: React.FC = () => {
 
   const saveCompany = async () => {
     if (!company?.name || !company?.jurisdiction) {
-      alert('Please fill in company name and jurisdiction')
+      showWarning('Required Fields', 'Please fill in company name and jurisdiction')
       return
     }
 
     if (!user) {
-      alert('Please log in to save company data')
+      showError('Authentication Required', 'Please log in to save company data')
       return
     }
 
@@ -259,10 +261,10 @@ export const CompanyTab: React.FC = () => {
       }
 
       setCompany(frontendCompany)
-      alert(existingCompany ? 'Company updated successfully!' : 'Company saved successfully!')
+      showSuccess('Company Saved', existingCompany ? 'Company updated successfully!' : 'Company saved successfully!')
     } catch (error) {
       console.error('Error saving company:', error)
-      alert('Error saving company. Please try again.')
+      showError('Save Failed', 'Error saving company. Please try again.')
     } finally {
       setIsSaving(false)
     }

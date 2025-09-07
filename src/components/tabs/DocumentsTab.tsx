@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { useAppStore } from '../../store/useAppStore'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNotification } from '../../contexts/NotificationContext'
 import { Button } from '../ui/Button'
 import { CardContent, CardHeader } from '../ui/Card'
 import { FileText, Eye, Download } from 'lucide-react'
 // import { PDFGenerator, downloadPDF } from '../../lib/pdfGenerator'
 import { formatCurrency, formatLongDate, escapeHtml } from '../../lib/utils'
 import { supabase } from '../../lib/supabase'
+import { SimplePDFGenerator } from '../../lib/simplePDFGenerator'
 import type { DocumentType, Tier, TieredRate } from '../../types'
 
 export const DocumentsTab: React.FC = () => {
@@ -24,6 +26,7 @@ export const DocumentsTab: React.FC = () => {
     signatures 
   } = useAppStore()
   const { user } = useAuth()
+  const { showSuccess, showError, showWarning, showInfo } = useNotification()
   // const [isGenerating, setIsGenerating] = useState<string | null>(null)
   const [previewDoc, setPreviewDoc] = useState<DocumentType | null>(null)
   const [previewContent, setPreviewContent] = useState<string>('')
@@ -721,12 +724,30 @@ export const DocumentsTab: React.FC = () => {
   // Generate PDF (placeholder for now)
   const handleGeneratePDF = async () => {
     if (!profile || profile.id.startsWith('profile_')) {
-      alert('Please load a profile first.')
+      showWarning('Profile Required', 'Please load a profile first to generate documents.')
       return
     }
 
-    // For now, just show a message that PDF generation is coming soon
-    alert('PDF generation will be available soon. For now, you can use the preview and print from browser.')
+    if (!previewDoc) {
+      showInfo('Preview Required', 'Please preview a document first before generating PDF.')
+      return
+    }
+
+    try {
+      const content = buildDocument(previewDoc)
+      const { blob, filename } = await SimplePDFGenerator.generatePDF(content, {
+        filename: `${previewDoc}_${profile.hireeName || 'document'}_${Date.now()}.pdf`,
+        format: 'A4',
+        orientation: 'portrait',
+        margin: '0.5in'
+      })
+      
+      SimplePDFGenerator.downloadPDF(blob, filename)
+      showSuccess('PDF Generated', 'PDF generation initiated. Please use the print dialog to save as PDF.')
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      showError('PDF Generation Failed', 'Failed to generate PDF. Please try again.')
+    }
   }
 
   const documentTypes: Array<{ type: DocumentType; title: string; description: string }> = [

@@ -1,5 +1,6 @@
 import React from 'react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { NotificationProvider } from './contexts/NotificationContext'
 import { LoginForm } from './components/auth/LoginForm'
 import { MainLayout } from './components/layout/MainLayout'
 import { CompanyTab } from './components/tabs/CompanyTab'
@@ -70,7 +71,9 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <NotificationProvider>
+        <AppContent />
+      </NotificationProvider>
     </AuthProvider>
   )
 }

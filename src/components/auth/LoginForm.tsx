@@ -1,35 +1,33 @@
 import React, { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { useNotification } from '../../contexts/NotificationContext'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Card, CardContent, CardHeader } from '../ui/Card'
-import { Building2, AlertCircle, CheckCircle } from 'lucide-react'
+import { Building2 } from 'lucide-react'
 
 export const LoginForm: React.FC = () => {
   const { signIn, signUp } = useAuth()
+  const { showSuccess, showError } = useNotification()
   const [isSignUp, setIsSignUp] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
   const [isLoading, setIsLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError('')
-    setSuccess('')
     setIsLoading(true)
 
     if (isSignUp) {
       if (password !== confirmPassword) {
-        setError('Passwords do not match')
+        showError('Password Mismatch', 'Passwords do not match')
         setIsLoading(false)
         return
       }
       
       if (password.length < 6) {
-        setError('Password must be at least 6 characters')
+        showError('Password Too Short', 'Password must be at least 6 characters')
         setIsLoading(false)
         return
       }
@@ -37,15 +35,15 @@ export const LoginForm: React.FC = () => {
       const { error } = await signUp(email, password)
       
       if (error) {
-        setError(error.message)
+        showError('Sign Up Failed', error.message)
       } else {
-        setSuccess('Check your email for a confirmation link!')
+        showSuccess('Account Created', 'Check your email for a confirmation link!')
       }
     } else {
       const { error } = await signIn(email, password)
       
       if (error) {
-        setError(error.message)
+        showError('Sign In Failed', error.message)
       }
     }
     
@@ -67,19 +65,6 @@ export const LoginForm: React.FC = () => {
         
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="flex items-center gap-2 p-3 bg-error-50 border border-error-200 rounded-xl text-error-700 text-sm">
-                <AlertCircle className="h-4 w-4" />
-                {error}
-              </div>
-            )}
-            
-            {success && (
-              <div className="flex items-center gap-2 p-3 bg-success-50 border border-success-200 rounded-xl text-success-700 text-sm">
-                <CheckCircle className="h-4 w-4" />
-                {success}
-              </div>
-            )}
             
             <Input
               label="Email"
@@ -131,8 +116,6 @@ export const LoginForm: React.FC = () => {
                 className="text-primary-600 hover:text-primary-700 font-medium"
                 onClick={() => {
                   setIsSignUp(!isSignUp)
-                  setError('')
-                  setSuccess('')
                   setEmail('')
                   setPassword('')
                   setConfirmPassword('')
