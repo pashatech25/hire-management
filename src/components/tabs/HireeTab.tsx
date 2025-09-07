@@ -20,7 +20,7 @@ export const HireeTab: React.FC = () => {
   const [showLoadDialog, setShowLoadDialog] = useState(false)
   
 
-  const handleInputChange = (field: 'hireeName' | 'hireeAddress' | 'hireeEmail', value: string) => {
+  const handleInputChange = (field: 'hireeName' | 'hireeAddress' | 'hireeEmail' | 'hireePhone', value: string) => {
     const updatedProfile = {
       ...profile,
       [field]: value,
@@ -48,6 +48,7 @@ export const HireeTab: React.FC = () => {
       hireeDob: null,
       hireeAddress: '',
       hireeEmail: '',
+      hireePhone: null,
       hireeDate: todayISO(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -79,6 +80,7 @@ export const HireeTab: React.FC = () => {
         hiree_dob: profile.hireeDob,
         hiree_address: profile.hireeAddress,
         hiree_email: profile.hireeEmail,
+        hiree_phone: profile.hireePhone,
         hiree_date: profile.hireeDate,
         owner_id: user.id,
         updated_at: new Date().toISOString(),
@@ -103,6 +105,7 @@ export const HireeTab: React.FC = () => {
           hireeDob: data.hiree_dob,
           hireeAddress: data.hiree_address,
           hireeEmail: data.hiree_email,
+          hireePhone: data.hiree_phone,
           hireeDate: data.hiree_date,
           createdAt: data.created_at,
           updatedAt: data.updated_at,
@@ -133,6 +136,7 @@ export const HireeTab: React.FC = () => {
           hireeDob: data.hiree_dob,
           hireeAddress: data.hiree_address,
           hireeEmail: data.hiree_email,
+          hireePhone: data.hiree_phone,
           hireeDate: data.hiree_date,
           createdAt: data.created_at,
           updatedAt: data.updated_at,
@@ -184,6 +188,7 @@ export const HireeTab: React.FC = () => {
         hireeDob: dbProfile.hiree_dob,
         hireeAddress: dbProfile.hiree_address,
         hireeEmail: dbProfile.hiree_email,
+        hireePhone: dbProfile.hiree_phone,
         hireeDate: dbProfile.hiree_date,
         createdAt: dbProfile.created_at,
         updatedAt: dbProfile.updated_at,
@@ -306,6 +311,7 @@ export const HireeTab: React.FC = () => {
       hireeDob: '1990-01-15T00:00:00.000Z',
       hireeAddress: '123 Main St, City, State 12345',
       hireeEmail: 'john.doe@example.com',
+      hireePhone: '(555) 123-4567',
       hireeDate: todayISO(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -321,6 +327,7 @@ export const HireeTab: React.FC = () => {
         hiree_dob: sampleProfile.hireeDob,
         hiree_address: sampleProfile.hireeAddress,
         hiree_email: sampleProfile.hireeEmail,
+        hiree_phone: sampleProfile.hireePhone,
         hiree_date: sampleProfile.hireeDate,
         owner_id: user.id,
         updated_at: new Date().toISOString(),
@@ -429,6 +436,13 @@ export const HireeTab: React.FC = () => {
                 onChange={(e) => handleInputChange('hireeEmail', e.target.value)}
                 placeholder="Enter hiree's email"
                 required
+              />
+              <Input
+                label="Phone Number"
+                type="tel"
+                value={profile.hireePhone || ''}
+                onChange={(e) => handleInputChange('hireePhone', e.target.value)}
+                placeholder="Enter hiree's phone number"
               />
               <Input
                 label="Hire Date"

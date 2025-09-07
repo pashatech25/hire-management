@@ -392,7 +392,7 @@ export const DocumentsTab: React.FC = () => {
         <div style="color:#475569;font-size:14px">
           <div><strong>Name:</strong> ${escapeHtml(profile.hireeName || "________________")}</div>
           <div><strong>Email:</strong> ${escapeHtml(profile.hireeEmail || "________________")}</div>
-          <div><strong>Phone:</strong> ${escapeHtml(profile.hireeEmail || "________________")}</div>
+          <div><strong>Phone:</strong> ${escapeHtml(profile.hireePhone || "________________")}</div>
           <div><strong>Address:</strong> ${escapeHtml(profile.hireeAddress || "________________")}</div>
           <div><strong>Date of Birth:</strong> ${profile.hireeDob ? formatLongDate(profile.hireeDob) : "________________"}</div>
         </div>

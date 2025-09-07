@@ -280,6 +280,7 @@ export const DataTab: React.FC = () => {
               <div><span className="font-medium">Name:</span> {profile.name}</div>
               <div><span className="font-medium">Hiree:</span> {profile.hireeName}</div>
               <div><span className="font-medium">Email:</span> {profile.hireeEmail}</div>
+              <div><span className="font-medium">Phone:</span> {profile.hireePhone || 'Not provided'}</div>
               <div><span className="font-medium">Created:</span> {formatDate(profile.createdAt)}</div>
             </div>
           </CardContent>

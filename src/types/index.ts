@@ -38,6 +38,7 @@ export interface Database {
           hiree_dob: string | null
           hiree_address: string
           hiree_email: string
+          hiree_phone: string | null
           hiree_date: string
           created_at: string
           updated_at: string
@@ -51,6 +52,7 @@ export interface Database {
           hiree_dob?: string | null
           hiree_address: string
           hiree_email: string
+          hiree_phone?: string | null
           hiree_date: string
           created_at?: string
           updated_at?: string
@@ -63,6 +65,7 @@ export interface Database {
           hiree_dob?: string | null
           hiree_address?: string
           hiree_email?: string
+          hiree_phone?: string | null
           hiree_date?: string
           updated_at?: string
         }
@@ -295,6 +298,7 @@ export interface Profile {
   hireeDob: string | null
   hireeAddress: string
   hireeEmail: string
+  hireePhone: string | null
   hireeDate: string
   createdAt: string
   updatedAt: string
