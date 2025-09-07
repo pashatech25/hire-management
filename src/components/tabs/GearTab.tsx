@@ -44,12 +44,16 @@ export const GearTab: React.FC = () => {
             }
           })
           setGearOverrides(overrideMap)
+        } else {
+          // If no overrides found, initialize with empty map
+          setGearOverrides({})
         }
 
         // For custom gear items, we don't need to load overrides since they're already hiree-specific
         // The custom gear items are loaded directly in the main gear loading effect
       } catch (error) {
         console.error('Error loading gear overrides:', error)
+        setGearOverrides({})
       }
     }
 
@@ -301,7 +305,11 @@ export const GearTab: React.FC = () => {
       // For company gear, update override state
       setGearOverrides(prev => ({
         ...prev,
-        [gearId]: { ...prev[gearId], required }
+        [gearId]: { 
+          ...prev[gearId], 
+          required,
+          customNotes: prev[gearId]?.customNotes || ''
+        }
       }))
     }
     
@@ -325,7 +333,11 @@ export const GearTab: React.FC = () => {
       // For company gear, update override state
       setGearOverrides(prev => ({
         ...prev,
-        [gearId]: { ...prev[gearId], customNotes }
+        [gearId]: { 
+          ...prev[gearId], 
+          customNotes,
+          required: prev[gearId]?.required ?? true
+        }
       }))
     }
     
