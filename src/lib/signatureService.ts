@@ -91,16 +91,7 @@ export class SignatureService {
     initialData: string,
     signedBy: 'tenant' | 'hiree'
   ): Promise<DocumentSignatureLink> {
-    // First, get the signature link to get the profile ID
-    const { data: existingLink, error: fetchError } = await supabase
-      .from('signatures')
-      .select('profile_id')
-      .eq('signature_token', token)
-      .single()
-
-    if (fetchError) {
-      throw new Error(`Failed to find signature link: ${fetchError.message}`)
-    }
+    // Update the signature link directly
 
     // Store signatures directly as base64 (bypass storage for now)
     const updateData: any = {

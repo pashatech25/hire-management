@@ -7,7 +7,6 @@ import { Input } from '../ui/Input'
 import { CardContent, CardHeader } from '../ui/Card'
 import { PenTool, Save, Trash2, Download, Upload, User, Building2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
-import { StorageService } from '../../lib/storageService'
 import type { Signature } from '../../types'
 
 export const SignaturesTab: React.FC = () => {

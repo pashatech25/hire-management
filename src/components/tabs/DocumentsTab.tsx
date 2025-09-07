@@ -1128,7 +1128,7 @@ export const DocumentsTab: React.FC = () => {
                            link.documentType === 'payment_schedule' ? 'Payment Schedule' :
                            link.documentType === 'waiver' ? 'Training Waiver' :
                            link.documentType === 'noncompete' ? 'Non-Compete' :
-                           link.documentType.replace('_', ' ')} Document
+                           String(link.documentType).replace('_', ' ')} Document
                         </h4>
                         <span className={`px-2 py-1 text-xs rounded-full ${
                           link.isSigned 
