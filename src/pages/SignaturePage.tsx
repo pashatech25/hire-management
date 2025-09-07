@@ -28,13 +28,16 @@ const SignaturePage: React.FC = () => {
   const loadSignatureLink = async () => {
     try {
       setLoading(true)
+      console.log('Loading signature link for token:', token)
       const link = await SignatureService.getSignatureLinkByToken(token!)
+      console.log('Signature link result:', link)
       if (!link) {
         setError('Signature link not found or expired')
         return
       }
       setSignatureLink(link)
     } catch (err) {
+      console.error('Error loading signature link:', err)
       setError(err instanceof Error ? err.message : 'Failed to load signature link')
     } finally {
       setLoading(false)

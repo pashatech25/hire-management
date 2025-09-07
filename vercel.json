@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/sign/:token",
+      "destination": "/index.html"
+    }
+  ]
+}
