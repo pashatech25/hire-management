@@ -129,12 +129,12 @@ export const GearTab: React.FC = () => {
 
   const addGearItem = async () => {
     if (!newGearItem.trim()) {
-      alert('Enter a gear item.')
+      showWarning('Input Required', 'Enter a gear item.')
       return
     }
 
     if (!user || !company) {
-      alert('Please log in and save company information first.')
+      showWarning('Setup Required', 'Please log in and save company information first.')
       return
     }
 
@@ -242,10 +242,10 @@ export const GearTab: React.FC = () => {
       setGearItems([...gearItems, frontendGearItem])
       setNewGearItem('')
       console.log('Added COMPANY gear item:', frontendGearItem)
-      alert('Gear item added to company inventory!')
+      showSuccess('Gear Added', 'Gear item added to company inventory!')
     } catch (error) {
       console.error('Error adding gear item:', error)
-      alert('Error adding gear item. Please try again.')
+      showError('Add Failed', 'Error adding gear item. Please try again.')
     }
   }
 
@@ -401,7 +401,7 @@ export const GearTab: React.FC = () => {
     } catch (error) {
       console.error('Error saving gear override:', error)
       const errorMessage = error instanceof Error ? error.message : String(error)
-      alert(`Error saving gear override: ${errorMessage}`)
+      showError('Save Failed', `Error saving gear override: ${errorMessage}`)
     }
   }
 
