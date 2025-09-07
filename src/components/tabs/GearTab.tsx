@@ -29,6 +29,7 @@ export const GearTab: React.FC = () => {
       }
 
       try {
+        // Load overrides for company gear items only
         const { data: overrides } = await supabase
           .from('hiree_gear_items')
           .select('*')
@@ -44,6 +45,9 @@ export const GearTab: React.FC = () => {
           })
           setGearOverrides(overrideMap)
         }
+
+        // For custom gear items, we don't need to load overrides since they're already hiree-specific
+        // The custom gear items are loaded directly in the main gear loading effect
       } catch (error) {
         console.error('Error loading gear overrides:', error)
       }
@@ -283,24 +287,50 @@ export const GearTab: React.FC = () => {
   }
 
   const handleGearRequired = async (gearId: string, required: boolean) => {
-    setGearOverrides(prev => ({
-      ...prev,
-      [gearId]: { ...prev[gearId], required }
-    }))
+    // Find the gear item to determine if it's custom gear
+    const gearItem = gearItems.find(item => item.id === gearId)
+    if (!gearItem) return
+
+    if (gearItem.isCustom) {
+      // For custom gear, update local state directly
+      const updatedItems = gearItems.map(item => 
+        item.id === gearId ? { ...item, isRequired: required } : item
+      )
+      setGearItems(updatedItems)
+    } else {
+      // For company gear, update override state
+      setGearOverrides(prev => ({
+        ...prev,
+        [gearId]: { ...prev[gearId], required }
+      }))
+    }
     
     // Save to database
-    const customNotes = gearOverrides[gearId]?.customNotes || ''
+    const customNotes = gearItem.isCustom ? (gearItem.customNotes || '') : (gearOverrides[gearId]?.customNotes || '')
     await saveGearOverrideToDatabase(gearId, required, customNotes)
   }
 
   const handleGearNotes = async (gearId: string, customNotes: string) => {
-    setGearOverrides(prev => ({
-      ...prev,
-      [gearId]: { ...prev[gearId], customNotes }
-    }))
+    // Find the gear item to determine if it's custom gear
+    const gearItem = gearItems.find(item => item.id === gearId)
+    if (!gearItem) return
+
+    if (gearItem.isCustom) {
+      // For custom gear, update local state directly
+      const updatedItems = gearItems.map(item => 
+        item.id === gearId ? { ...item, customNotes } : item
+      )
+      setGearItems(updatedItems)
+    } else {
+      // For company gear, update override state
+      setGearOverrides(prev => ({
+        ...prev,
+        [gearId]: { ...prev[gearId], customNotes }
+      }))
+    }
     
     // Save to database
-    const required = gearOverrides[gearId]?.required ?? true
+    const required = gearItem.isCustom ? (gearItem.isRequired ?? true) : (gearOverrides[gearId]?.required ?? true)
     await saveGearOverrideToDatabase(gearId, required, customNotes)
   }
 
@@ -308,6 +338,34 @@ export const GearTab: React.FC = () => {
     if (!user || !profile || profile.id.startsWith('profile_')) return
 
     try {
+      // Find the gear item to determine if it's custom gear
+      const gearItem = gearItems.find(item => item.id === gearId)
+      if (!gearItem) {
+        console.error('Gear item not found:', gearId)
+        return
+      }
+
+      // Only save overrides for company gear items (not custom gear)
+      if (gearItem.isCustom) {
+        // For custom gear, update the custom gear item directly
+        const { error } = await supabase
+          .from('hiree_custom_gear_items')
+          .update({
+            is_required: required,
+            custom_notes: customNotes || null
+          })
+          .eq('id', gearId)
+
+        if (error) {
+          console.error('Error updating custom gear item:', error)
+          throw error
+        }
+
+        console.log('Custom gear item updated successfully')
+        return
+      }
+
+      // For company gear items, save as override
       const overrideData = {
         profile_id: profile.id,
         gear_item_id: gearId,
@@ -674,7 +732,7 @@ export const GearTab: React.FC = () => {
                         <td className="text-center">
                           <input
                             type="checkbox"
-                            checked={gearOverrides[item.id]?.required ?? true}
+                            checked={item.isCustom ? (item.isRequired ?? true) : (gearOverrides[item.id]?.required ?? true)}
                             onChange={(e) => handleGearRequired(item.id, e.target.checked)}
                             className="h-4 w-4 text-blue-600 rounded"
                           />
@@ -683,7 +741,7 @@ export const GearTab: React.FC = () => {
                           <Input
                             placeholder="Custom notes"
                             className="border-0 shadow-none p-0 text-sm"
-                            value={gearOverrides[item.id]?.customNotes || ''}
+                            value={item.isCustom ? (item.customNotes || '') : (gearOverrides[item.id]?.customNotes || '')}
                             onChange={(e) => handleGearNotes(item.id, e.target.value)}
                           />
                         </td>
